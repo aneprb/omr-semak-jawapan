@@ -143,13 +143,22 @@ async function registerServiceWorker() {
   try {
     const head = await fetch('sw.js', { method: 'HEAD', cache: 'no-store' });
     if (!head.ok) return;
-    const reg = await navigator.serviceWorker.register('sw.js');
+    // updateViaCache 'none': the precache list (importScripts) is fetched past the HTTP cache too, otherwise a
+    // phone can keep the old list for the host's max-age and see no update
+    const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
     if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const nw = reg.installing;
       nw?.addEventListener('statechange', () => {
         if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner(nw);
       });
+    });
+    // an installed app on a phone is resumed, not reloaded, so the check at load alone may never run again
+    let lastCheck = Date.now();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastCheck < 60000) return;
+      lastCheck = Date.now();
+      reg.update().catch(() => {});
     });
   } catch (e) {
     warn('sw', `daftar gagal: ${e?.name}`);

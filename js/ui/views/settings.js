@@ -36,6 +36,23 @@ export async function render(ctx) {
     }
   } catch { /* ignore */ }
 
+  async function checkUpdate(e) {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (!reg) throw new Error('no-sw');
+      toast(S.settings.updateChecking);
+      await reg.update();
+      // a new worker reports through app.js (banner); an older waiting one already shows the banner
+      toast(reg.installing || reg.waiting ? S.settings.updateFound : S.settings.updateLatest);
+    } catch {
+      toast(S.settings.updateFailed, { error: true });
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   const saveSafe = async (k, v) => { try { await setSetting(k, v); } catch { toast(S.errors.storage, { error: true }); } };
 
   async function doExport() {
@@ -118,5 +135,8 @@ export async function render(ctx) {
     h('section', { class: 'stack' },
       h('h2', null, S.settings.about),
       h('p', { class: 'muted' }, S.settings.aboutBody),
-      versionEl));
+      versionEl,
+      'serviceWorker' in navigator
+        ? h('button', { class: 'btn btn--secondary', type: 'button', onclick: checkUpdate }, S.settings.checkUpdate)
+        : null));
 }

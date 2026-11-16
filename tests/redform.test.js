@@ -38,6 +38,21 @@ function rotate180(img) {
 
 const answerString = (r) => r.answers.map((a) => a.choice || "-").join("");
 
+// Same resize the app does on a picked photo (canvas, longest side `side`); the engine must not depend on
+// how the photo was shrunk (a canvas resize once moved the lattice a whole block).
+function canvasResize(img, side) {
+  const src = new OffscreenCanvas(img.width, img.height);
+  src.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), 0, 0);
+  const k = side / Math.max(img.width, img.height);
+  const w = Math.round(img.width * k);
+  const h = Math.round(img.height * k);
+  const dst = new OffscreenCanvas(w, h);
+  const ctx = dst.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h);
+}
+
 export default [
   {
     name: "kertas kosong (kelabu rata) -> NO_FRAME, tiada pengesanan langsung",
@@ -107,6 +122,12 @@ export default [
       }
       const d = detectMarkers(downscale(img, 1200), { format: "spm-kom28" });
       assert(d.found, "pengesanan langsung gagal: " + d.error);
+      // photo picked in the app (canvas resize) at two sizes
+      for (const side of [1600, 1500]) {
+        const ra = scanImage(canvasResize(img, side), LAYOUT, {});
+        assert(ra.ok, `kanvas ${side}: ` + ra.error);
+        assertEqual(answerString(ra).slice(0, 20), PHONE_EXPECTED.slice(0, 20));
+      }
     },
   })),
   {

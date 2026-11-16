@@ -1,5 +1,5 @@
 /* DIJANA oleh tools/list_assets.py - jangan edit. */
-self.CACHE_VERSION = "fe4e47b56f51";
+self.CACHE_VERSION = "6a60a97e647d";
 self.PRECACHE = [
   "./",
   "css/app.css",
@@ -42,6 +42,7 @@ self.PRECACHE = [
   "js/ui/state.js",
   "js/ui/strings.ms.js",
   "js/ui/views/analysis.js",
+  "js/ui/views/bulk.js",
   "js/ui/views/key-entry.js",
   "js/ui/views/result-detail.js",
   "js/ui/views/results.js",

@@ -1,5 +1,5 @@
 {
-  "version": "fe4e47b56f51",
+  "version": "6a60a97e647d",
   "assets": [
     "./",
     "css/app.css",
@@ -42,6 +42,7 @@
     "js/ui/state.js",
     "js/ui/strings.ms.js",
     "js/ui/views/analysis.js",
+    "js/ui/views/bulk.js",
     "js/ui/views/key-entry.js",
     "js/ui/views/result-detail.js",
     "js/ui/views/results.js",

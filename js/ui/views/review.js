@@ -12,9 +12,11 @@ import { loadTest, choicesOf, enc } from '../helpers.js';
 export async function render(ctx) {
   const { test, notFound } = await loadTest(ctx.params.id);
   const id = enc(ctx.params.id);
-  ctx.setHeader({ title: S.review.title, back: `#/ujian/${id}/imbas`, wide: true });
-  if (notFound) return notFound;
+  if (notFound) { ctx.setHeader({ title: S.review.title, back: `#/ujian/${id}/imbas`, wide: true }); return notFound; }
   const cap = getCapture(test.id);
+  // bulk upload hands over its own return page and the name typed there
+  const backTo = cap?.returnTo ?? `#/ujian/${id}/imbas`;
+  ctx.setHeader({ title: S.review.title, back: backTo, wide: true });
   if (!cap) return emptyState({ title: S.review.noImage, action: { label: S.home.scan, href: `#/ujian/${id}/imbas` } });
 
   const { imageData, scan } = cap;
@@ -24,8 +26,8 @@ export async function render(ctx) {
   const final = scan.answers.map((a) => a.choice ?? null);
   const manual = new Set();
   const rosterByCode = new Map(test.roster.map((r) => [r.code, r.name]));
-  let code = scan.studentId?.value ?? '';
-  let name = rosterByCode.get(code) ?? '';
+  let code = cap.code ?? scan.studentId?.value ?? '';
+  let name = cap.name || (rosterByCode.get(code) ?? '');
   let matched = rosterByCode.has(code);
   let saving = false;
   let gone = false;
@@ -103,25 +105,27 @@ export async function render(ctx) {
         }
       }
       const g = gradeSheet(final, test.key);
+      const rid = replaceId ?? uuid();
       await saveResult({
-        id: replaceId ?? uuid(), testId: test.id, studentCode: code, studentName: name,
+        id: rid, testId: test.id, studentCode: code, studentName: name,
         scanned: scan.answers.map((a) => ({ q: a.q, choice: a.choice ?? null, status: a.status })),
         final: [...final], manualEdits: [...manual].sort((a, b) => a - b),
         correct: g.correct, total: g.total, percent: g.percent, scannedAt: new Date().toISOString(),
       });
       clearCapture();
       toast(S.review.saved);
-      ctx.navigate(`#/ujian/${id}/imbas`);
+      cap.onSaved?.({ id: rid, name, code });
+      ctx.navigate(backTo);
     } catch {
       toast(S.errors.storage, { error: true });
     } finally { saving = false; }
   }
 
   async function rescan() {
-    const ok = await confirmDialog({ title: S.review.discardTitle, body: S.review.discardBody, confirm: S.review.discard, danger: true });
+    const ok = cap.returnTo ? true : await confirmDialog({ title: S.review.discardTitle, body: S.review.discardBody, confirm: S.review.discard, danger: true });
     if (!ok) return;
     clearCapture();
-    ctx.navigate(`#/ujian/${id}/imbas`);
+    ctx.navigate(backTo);
   }
 
   ctx.onLeave(() => { gone = true; source.width = source.height = 0; });
@@ -136,8 +140,8 @@ export async function render(ctx) {
         h('div', { class: 'field' }, h('label', { for: 'rv-name' }, S.review.studentName), nameInput, matchNote)),
       dynamic,
       h('div', { class: 'actionbar' },
-        h('button', { class: 'btn btn--secondary', type: 'button', onclick: rescan }, S.review.rescan),
-        h('button', { class: 'btn btn--lg', type: 'button', onclick: save }, S.review.saveNext))));
+        h('button', { class: 'btn btn--secondary', type: 'button', onclick: rescan }, cap.returnTo ? S.app.back : S.review.rescan),
+        h('button', { class: 'btn btn--lg', type: 'button', onclick: save }, cap.returnTo ? S.review.save : S.review.saveNext))));
 
   paintAll();
   drawNameCrop(nameCanvas, source, scan, layout);

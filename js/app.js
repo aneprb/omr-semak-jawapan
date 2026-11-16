@@ -17,6 +17,7 @@ export const ROUTES = [
   ['/ujian/:id/templat', 'template'],
   ['/ujian/:id/imbas', 'scan'],
   ['/ujian/:id/semak', 'review'],
+  ['/ujian/:id/pukal', 'bulk'],
   ['/ujian/:id/keputusan', 'results'],
   ['/ujian/:id/keputusan/:rid', 'result-detail'],
   ['/ujian/:id/analisis', 'analysis'],

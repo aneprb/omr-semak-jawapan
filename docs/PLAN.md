@@ -626,3 +626,22 @@ pen merah / komputer riba / tanda guru) kini dibaca tepat. Perubahan utama dalam
 - ambang borang merah: kosong 0.15, hitam 0.25, jurang 0.15 (pensel lebih pudar melalui cetakan merah);
   ambang guru di Tetapan hanya menimpa jika berbeza daripada lalai hitam.
 Masa imbasan penuh ~1-1.4 s pada desktop.
+
+## 12. Muat naik gambar pukal (1.2.0, 2026-11-16)
+
+Laluan `#/ujian/:id/pukal` (`js/ui/views/bulk.js`), pautan di halaman ujian di bawah "Imbas kertas".
+- Guru pilih banyak gambar (`<input multiple>`); nama fail menjadi nama murid (`nameFromFile`: `_` -> ruang,
+  nombor senarai di depan dibuang; nama kamera/WhatsApp -> kosong) dan dipadankan dengan senarai nama
+  (`matchRoster`, nama atau kod) untuk kod murid.
+- Gambar diimbas satu demi satu dalam worker; hanya File, lakaran kecil dan hasil imbasan disimpan dalam memori
+  (`state.js`, kunci `bulk:<testId>`), jadi senarai kekal semasa ke halaman Semak dan kembali.
+- "Semak" membuka `review.js` dengan nama/kod, `returnTo` dan `onSaved`; "Simpan semua" menyimpan semua yang
+  belum disimpan (nama wajib; kod sama dalam senarai nama menggantikan keputusan lama).
+
+**Ketahanan enjin terhadap saiz gambar (1.2.0)**: app mengecilkan gambar dengan kanvas, yang dahulu boleh
+menganjak kekisi satu blok atau memusingkannya 180 darjah. `robustScore` kini juga mengira: penalti merah pada
+petak kosong S81-90 dan satu blok di atas baris 1, bonus nombor soalan di kiri lajur A (berbanding kanan lajur D),
+bonus garis bingkai atas/bawah panel, dan bonus blok 5 soalan yang paling lemah. Varian terbaik digilap dengan
+purata terpangkas (75 % bawah) skor itu sendiri. Gambar kecil (< 0.9 x 1600 px) dibesarkan dahulu.
+Ujian sapuan (5 gambar x 10 saiz 1300-2000 px): 48/50 betul; semua saiz 1600 (laluan app) betul.
+

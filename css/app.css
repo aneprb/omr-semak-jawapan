@@ -115,6 +115,10 @@ a { color: var(--primary); }
 .list-item__sub { font-size: var(--fs-sm); color: var(--muted); }
 .list-item::after { content: "\203A"; color: var(--muted); font-size: 1.4rem; }
 .list-item--plain::after { content: none; }
+.bulk-item { display: grid; grid-template-columns: 72px 1fr; gap: var(--s3); align-items: start; }
+.bulk-item__thumb { width: 72px; height: 96px; object-fit: cover; border-radius: var(--r-sm, 6px); background: var(--line); }
+.bulk-item__body { min-width: 0; display: grid; gap: var(--s2); }
+.bulk-item__status { font-size: var(--fs-sm); }
 .empty { text-align: center; padding: var(--s7) var(--s4); display: grid; gap: var(--s3); justify-items: center; }
 .empty .bubbles { display: flex; gap: var(--s2); }
 .skeleton { background: linear-gradient(90deg, var(--surface-2), var(--surface), var(--surface-2)); background-size: 200% 100%; border-radius: var(--r-sm); min-height: 20px; animation: shimmer 1.4s linear infinite; }

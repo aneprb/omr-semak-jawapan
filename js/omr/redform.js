@@ -932,6 +932,19 @@ function coarseScore(rnB, w, h, Hu) {
 // "Gap" points: places on the panel that are always paper (between 5-question blocks, between the three
 // question columns). Contrast = bubbles - gaps penalises a lattice that is too small/large or a row/column off.
 const GAPS = [];
+// Point groups that are blank paper (or at least not bubbles) only when the lattice is aligned; see robustScore.
+const OUTSIDE = [];
+const OUTSIDE_W = [1, 1]; // empty slots, block above
+const TB_W = 1; // top / bottom frame lines
+const MB_W = 0.5; // weakest block
+const TB_TOP = [];
+const TB_BOT = [];
+for (let t = 0.02; t < 0.99; t += 0.02) {
+  TB_TOP.push({ u: t, v: 0 });
+  TB_BOT.push({ u: t, v: 1 });
+}
+const NUMS = [];
+const NUMS_MIRROR = [];
 (function initGaps() {
   const v = P.rowV;
   const per = P.blockSize;
@@ -952,7 +965,25 @@ const GAPS = [];
   for (const u of allU) GAPS.push({ u, v: topV });
   const last = P.colX.length - 1;
   const used = N_Q - last * P.perColumn; // rows used in the last column (80 - 60 = 20)
-  for (let r = used; r < v.length; r++) for (const u of P.colX[last]) GAPS.push({ u, v: v[r] });
+  const empty = [];
+  for (let r = used; r < v.length; r++) for (const u of P.colX[last]) {
+    GAPS.push({ u, v: v[r] });
+    empty.push({ u, v: v[r] });
+  }
+  const bdv = v[per] - v[0];
+  const above = [];
+  for (let r = 0; r < per; r++) for (const u of allU) above.push({ u, v: v[r] - bdv });
+  // (one block below / one group right were tried: red print and other sheets there hurt more than helped)
+  OUTSIDE.push(empty, above);
+  // number column: ~0.033 left of A, digits about 0.02 wide; mirror: the same distance right of D
+  for (let q = 1; q <= N_Q; q++) {
+    const col = Math.floor((q - 1) / P.perColumn);
+    const row = (q - 1) % P.perColumn;
+    for (const du of [-0.008, 0, 0.008]) {
+      NUMS.push({ u: P.colX[col][0] - 0.033 + du, v: v[row] });
+      NUMS_MIRROR.push({ u: P.colX[col][N_CH - 1] + 0.033 + du, v: v[row] });
+    }
+  }
 })();
 
 // Points on the four panel frame lines: the one feature that pins the lattice vertically (the paper strip
@@ -993,7 +1024,7 @@ function latticeContrast(map, w, h, Hu) {
  * contrast. Heavy blur first so the climb is not trapped one row/choice off; fixes perspective and the
  * guessed side of 3-line candidates.
  */
-function refineCorners(prep, corners, fineOnly) {
+function refineCorners(prep, corners, fineOnly, score = latticeContrast) {
   const { w, h } = prep.maps;
   const diag = Math.hypot(w, h);
   let c = corners.map((p) => ({ x: p.x, y: p.y }));
@@ -1012,7 +1043,7 @@ function refineCorners(prep, corners, fineOnly) {
     const step = Math.max(1, frac * diag);
     let H = computeHomography(UNIT, c);
     if (!H) return null;
-    best = latticeContrast(map, w, h, H);
+    best = score(map, w, h, H);
     for (let it = 0; it < 40; it++) {
       let improved = false;
       for (const mv of moves) {
@@ -1027,7 +1058,7 @@ function refineCorners(prep, corners, fineOnly) {
         }
         const H2 = computeHomography(UNIT, t);
         if (!H2) continue;
-        const sc = latticeContrast(map, w, h, H2);
+        const sc = score(map, w, h, H2);
         if (sc > best + 1e-6) {
           best = sc;
           c = t;
@@ -1048,9 +1079,10 @@ const GROUP_DU = P.colX[1][0] - P.colX[0][0];
  * median at the gap points. Medians ignore filled bubbles and red clutter (packaging, pens) that a mean
  * rewards. Shifts: optional per-bubble pixel offsets from fitLattice.
  */
-function robustScore(map, w, h, Hu, shiftX, shiftY) {
+function robustScore(map, w, h, Hu, shiftX, shiftY, trim) {
   const { rx, ry } = P.bubble;
   const vals = [];
+  const blk = MB_W ? BLOCKS.map(() => []) : null;
   for (let i = 0; i < BUBBLES.length; i++) {
     const b = BUBBLES[i];
     let s = 0;
@@ -1066,9 +1098,15 @@ function robustScore(map, w, h, Hu, shiftX, shiftY) {
         n++;
       }
     }
-    if (n >= 5) vals.push(s / n);
+    if (n >= 5) {
+      vals.push(s / n);
+      if (blk) blk[b.block].push(s / n);
+    }
   }
   if (vals.length < 0.6 * BUBBLES.length) return -Infinity;
+  // weakest 5-question block: a lattice moved one block leaves a whole block on paper without bubbles
+  let minBlk = Infinity;
+  if (blk) for (const bv of blk) if (bv.length >= 10) minBlk = Math.min(minBlk, median(bv));
   const gv = [];
   for (const q of GAPS) {
     const p = applyHomography(Hu, q.u, q.v);
@@ -1076,8 +1114,86 @@ function robustScore(map, w, h, Hu, shiftX, shiftY) {
     const y = Math.round(p.y);
     if (x >= 0 && y >= 0 && x < w && y < h) gv.push(map[y * w + x]);
   }
-  return median(vals) - median(gv);
+  const gap = median(gv);
+  // The medians barely notice the edges, yet the edges are what tell the true lattice from the same one turned
+  // 180 degrees or moved a block: places that hold no printed bubble when aligned (empty slots of questions
+  // 81-90, one block above row 1) find bubbles when it is moved.
+  let pen = 0;
+  for (let gi = 0; gi < OUTSIDE.length; gi++) {
+    const grp = OUTSIDE[gi];
+    const wgt = OUTSIDE_W[gi];
+    let sum = 0;
+    let cnt = 0;
+    for (const q of grp) {
+      const p = applyHomography(Hu, q.u, q.v);
+      const x = Math.round(p.x);
+      const y = Math.round(p.y);
+      if (x >= 0 && y >= 0 && x < w && y < h) {
+        sum += map[y * w + x];
+        cnt++;
+      }
+    }
+    if (cnt >= 0.5 * grp.length) pen += wgt * Math.max(0, sum / cnt - gap);
+  }
+  // question numbers print left of column A: red there and blank right of column D (turned: the reverse)
+  {
+    const side = (pts) => {
+      let sum = 0;
+      let cnt = 0;
+      for (const q of pts) {
+        const p = applyHomography(Hu, q.u, q.v);
+        const x = Math.round(p.x);
+        const y = Math.round(p.y);
+        if (x >= 0 && y >= 0 && x < w && y < h) {
+          sum += map[y * w + x];
+          cnt++;
+        }
+      }
+      return cnt ? sum / cnt : 0;
+    };
+    pen -= side(NUMS) - side(NUMS_MIRROR);
+    // the panel's top and bottom frame lines pin the block shift (a lattice moved a block puts them in text)
+    if (TB_W) {
+      let fs = 0;
+      let fn = 0;
+      for (const line of [TB_TOP, TB_BOT]) {
+        let sum = 0;
+        let cnt = 0;
+        for (const q of line) {
+          const p = applyHomography(Hu, q.u, q.v);
+          const x = Math.round(p.x);
+          const y = Math.round(p.y);
+          if (x >= 0 && y >= 0 && x < w && y < h) {
+            sum += map[y * w + x];
+            cnt++;
+          }
+        }
+        if (cnt >= 0.7 * line.length) {
+          fs += sum / cnt;
+          fn++;
+        }
+      }
+      if (fn) pen -= TB_W * (fs / fn - gap);
+    }
+  }
+  // trim: mean of the lower 75 % instead of the median, so a lattice that fits only most rows loses
+  let body;
+  if (trim) {
+    vals.sort((a, b) => a - b);
+    const m = Math.max(1, Math.floor(vals.length * 0.75));
+    body = 0;
+    for (let i = 0; i < m; i++) body += vals[i];
+    body /= m;
+  } else body = median(vals);
+  if (blk && Number.isFinite(minBlk)) pen -= MB_W * (minBlk - gap);
+  return body - gap - pen;
 }
+
+
+const robustObjective = (map, w, h, H) => {
+  const v = robustScore(map, w, h, H, null, null, true);
+  return Number.isFinite(v) ? v : -1e9;
+};
 
 /** Same lattice moved by k 5-row blocks (v), j question columns (u) and/or turned 180 degrees. */
 function variantCorners(Hu, k, rot, j = 0) {
@@ -1095,6 +1211,8 @@ function saneQuad(c, w, h) {
   if (!(fw >= MIN_FRAME_FRAC * Math.max(w, h))) return false;
   const ar = fh / fw / P.aspect;
   if (ar < 0.6 || ar > 1.6) return false;
+  const ratio = (a, b) => Math.min(a, b) / Math.max(a, b);
+  if (ratio(dist(c[0], c[1]), dist(c[3], c[2])) < 0.6 || ratio(dist(c[0], c[3]), dist(c[1], c[2])) < 0.6) return false;
   let sign = 0;
   for (let i = 0; i < 4; i++) {
     const a = c[i];
@@ -1152,7 +1270,7 @@ function selectFrame(maps, rnS, rnB, T, quads, opts) {
   // The lattice is periodic per block and nearly 180-degree symmetric: test the shifted / turned variants
   // of the best refinements on the fine map with the robust (median) score, then polish the winner.
   const rnM = maps.rnM;
-  const finals = [];
+  const picks = [];
   for (const e of refined.slice(0, (opts && opts.variants) || 10)) {
     let bestV = null;
     for (const rot of [false, true]) {
@@ -1166,8 +1284,14 @@ function selectFrame(maps, rnS, rnB, T, quads, opts) {
         }
       }
     }
-    if (!bestV || !Number.isFinite(bestV.sc)) continue;
-    const r = refineCorners(opts.prep, bestV.cs, true);
+    if (bestV && Number.isFinite(bestV.sc)) picks.push({ e, bestV });
+  }
+  // polish the most promising few on the final objective itself (the contrast climb can settle a few px off
+  // on one side); trimmed mean so a lattice fitting only most rows loses
+  picks.sort((a, b) => b.bestV.sc - a.bestV.sc);
+  const finals = [];
+  for (const { e, bestV } of picks.slice(0, (opts && opts.polish) || 4)) {
+    const r = refineCorners(opts.prep, bestV.cs, true, robustObjective);
     const cs = r ? r.corners : bestV.cs;
     const Hu = computeHomography(UNIT, cs);
     if (!Hu || !saneQuad(cs, w, h)) continue;
@@ -1185,8 +1309,9 @@ function selectFrame(maps, rnS, rnB, T, quads, opts) {
     const frameW = (dist(e.corners[0], e.corners[1]) + dist(e.corners[3], e.corners[2])) / 2;
     e.fit = fitLattice(maps, rnS, e.Hu, T, frameW, opts);
     e.frameW = frameW;
-    e.fit.robust = robustScore(rnM, w, h, e.Hu, e.fit.shiftX, e.fit.shiftY);
-    e.score = e.fit.robust;
+    // per-bubble snapping lets any lattice grab nearby red, so rank and accept on the unsnapped score
+    e.fit.robust = e.robust;
+    e.score = e.robust;
     evals.push(e);
     if (!best || e.score > best.score) best = e;
   }
@@ -1197,8 +1322,45 @@ function selectFrame(maps, rnS, rnB, T, quads, opts) {
   return best;
 }
 
+/** Bilinear enlargement of RGBA image data so that the longer side becomes `maxSide`. */
+function upscale(img, maxSide) {
+  const k = maxSide / Math.max(img.width, img.height);
+  const W = Math.round(img.width * k);
+  const H = Math.round(img.height * k);
+  const src = img.data;
+  const sw = img.width;
+  const sh = img.height;
+  const out = new Uint8ClampedArray(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    const fy = Math.min(sh - 1, Math.max(0, (y + 0.5) / k - 0.5));
+    const y0 = Math.floor(fy);
+    const y1 = Math.min(sh - 1, y0 + 1);
+    const ty = fy - y0;
+    for (let x = 0; x < W; x++) {
+      const fx = Math.min(sw - 1, Math.max(0, (x + 0.5) / k - 0.5));
+      const x0 = Math.floor(fx);
+      const x1 = Math.min(sw - 1, x0 + 1);
+      const tx = fx - x0;
+      const a = (y0 * sw + x0) * 4;
+      const b = (y0 * sw + x1) * 4;
+      const c = (y1 * sw + x0) * 4;
+      const d = (y1 * sw + x1) * 4;
+      const o = (y * W + x) * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        const top = src[a + ch] + (src[b + ch] - src[a + ch]) * tx;
+        const bot = src[c + ch] + (src[d + ch] - src[c + ch]) * tx;
+        out[o + ch] = top + (bot - top) * ty;
+      }
+      out[o + 3] = 255;
+    }
+  }
+  return { width: W, height: H, data: out };
+}
+
 function prepare(img, maxSide) {
-  const scaled = downscale(img, maxSide);
+  // small photos (messaging apps send ~1100-1300 px) are enlarged: blur radii and Hough steps are tuned for
+  // ~maxSide and a far-away panel is then only a few hundred px wide
+  const scaled = Math.max(img.width, img.height) < 0.9 * maxSide ? upscale(img, maxSide) : downscale(img, maxSide);
   const maps = buildMaps(scaled);
   const { p99, T } = inkThreshold(maps.rn);
   // Line mask: red AND clearly redder than its neighbourhood. Large reddish areas (a laptop or desk under warm

@@ -52,6 +52,7 @@ export async function render(ctx) {
       h('p', null, S.home.keyDone(keyFilled(test), n)),
       h('p', { class: 'muted' }, S.home.papers(results.length) + (test.className ? ` · ${test.className}` : '') + (test.subject ? ` · ${test.subject}` : ''))),
     h('a', { class: 'btn btn--lg btn--block', href: `#/ujian/${id}/imbas`, 'aria-disabled': ready ? null : 'true', tabindex: ready ? null : '-1', 'aria-describedby': ready ? null : 'need-key' }, S.home.scan),
+    ready ? h('a', { class: 'btn btn--secondary btn--block', href: `#/ujian/${id}/pukal` }, S.bulk.open) : null,
     ready ? null : h('p', { id: 'need-key', class: 'muted', role: 'status' }, S.home.needKey),
     h('ul', { class: 'list' },
       link(S.home.key, `#/ujian/${id}/skema`),

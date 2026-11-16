@@ -24,13 +24,16 @@ export const S = {
     className: 'Kelas', subject: 'Mata pelajaran', optional: '(pilihan)',
     numQuestions: 'Bilangan soalan', numQuestionsHint: '10 hingga 60', numQuestionsError: 'Masukkan nombor antara 10 dan 60.',
     numChoices: 'Bilangan pilihan', choices4: 'A–D', choices5: 'A–E',
+    sheetType: 'Jenis kertas jawapan', sheetApp: 'Kertas cetakan app', sheetSpm: 'Borang SPM (merah)',
+    sheetSpmHint: 'Borang rasmi "Kertas Jawapan Objektif SPM" (LPM/KOM 28). Pilihan A–D, tiada kod pelajar.',
+    numQuestionsSpmHint: '1 hingga 80', numQuestionsSpmError: 'Masukkan nombor antara 1 dan 80.',
     idDigits: 'Digit kod pelajar', idDigitsHint: '0 hingga 6. Pilih 0 jika tidak guna kod.', idDigitsError: 'Masukkan nombor antara 0 dan 6.',
     layoutLocked: 'Susun atur dikunci kerana sudah ada keputusan. Guna Duplikasi ujian untuk susun atur baharu.',
     create: 'Cipta ujian', saved: 'Ujian disimpan.',
   },
 
   home: {
-    scan: 'Imbas kertas', key: 'Skema jawapan', template: 'Cetak templat', results: 'Keputusan', analysis: 'Analisis item',
+    scan: 'Imbas kertas', key: 'Skema jawapan', template: 'Cetak templat', templateSpm: 'Panduan borang SPM', results: 'Keputusan', analysis: 'Analisis item',
     export: 'Eksport CSV', roster: 'Senarai nama', duplicate: 'Duplikasi ujian', delete: 'Padam ujian',
     keyDone: (a, n) => `Skema ${a}/${n} diisi`,
     needKey: 'Lengkapkan skema dahulu sebelum mengimbas.',
@@ -72,6 +75,9 @@ export const S = {
     layoutCode: 'Kod susun atur',
     studentName: 'Nama', studentClass: 'Kelas', date: 'Tarikh',
     useCopy: 'Fotostat dibenarkan. Pastikan keempat-empat penanda sudut kelihatan.',
+    spmTitle: 'Guna borang SPM rasmi',
+    spmBody: 'Ujian ini menggunakan borang "Kertas Jawapan Objektif SPM" (LPM/KOM 28) bercetak merah. Tiada templat untuk dicetak.',
+    spmTips: 'Semasa mengimbas: letak borang di atas permukaan rata, pastikan seluruh kawasan jawapan (bingkai merah) kelihatan dan cahaya sekata. Elak pantulan pada kertas.',
   },
 
   scan: {
@@ -95,6 +101,10 @@ export const S = {
     startCamera: 'Mulakan kamera',
     iosPermHint: 'Jika kamera ditanya semula, ketik Benarkan.',
     close: 'Tutup kamera',
+    searchingSpm: 'Cari bingkai jawapan merah…',
+    partialSpm: 'Borang dikesan, tahan…',
+    holdingSpm: 'Borang dikesan, tahan…',
+    failNoFrame: 'Kawasan jawapan borang SPM tidak dijumpai. Pastikan seluruh bingkai merah kelihatan, kertas rata dan cahaya sekata.',
   },
 
   review: {

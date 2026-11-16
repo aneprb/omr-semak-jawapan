@@ -1,6 +1,6 @@
 import { h } from '../../util/dom.js';
 import { getSetting } from '../../data/repo.js';
-import { buildLayout } from '../../omr/layout.js';
+import { buildLayout, isRedForm } from '../../omr/layout.js';
 import { renderSheetSvg, svgToNode } from '../../template/render-sheet.js';
 import { S } from '../strings.ms.js';
 import { loadTest, enc } from '../helpers.js';
@@ -9,6 +9,15 @@ export async function render(ctx) {
   const { test, notFound } = await loadTest(ctx.params.id);
   ctx.setHeader({ title: S.template.title, back: notFound ? '#/' : `#/ujian/${enc(ctx.params.id)}` });
   if (notFound) return notFound;
+
+  if (isRedForm(test.layoutConfig)) {
+    ctx.setHeader({ title: S.home.templateSpm, back: `#/ujian/${enc(ctx.params.id)}` });
+    return h('div', { class: 'stack' },
+      h('section', { class: 'card stack' },
+        h('h2', null, S.template.spmTitle),
+        h('p', null, S.template.spmBody),
+        h('p', { class: 'muted' }, S.template.spmTips)));
+  }
 
   const layout = buildLayout(test.layoutConfig);
   const schoolName = await getSetting('schoolName', '');

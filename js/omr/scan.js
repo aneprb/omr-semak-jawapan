@@ -5,6 +5,7 @@ import { findMarkers } from "./markers.js";
 import { computeHomography } from "./homography.js";
 import { calibrate, sampleLayout, checkOrientation } from "./sampler.js";
 import { decideRow } from "./decide.js";
+import { scanRedForm, detectRedForm } from "./redform.js";
 
 const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 
@@ -72,6 +73,7 @@ function layoutPoints(layout) {
 }
 
 export function scanImage(img, layout, opts) {
+  if (layout && layout.format === "spm-kom28") return scanRedForm(img, layout, opts);
   const t0 = now();
   try {
     if (!isValidLayout(layout)) return emptyResult("LAYOUT_INVALID", t0);
@@ -149,8 +151,12 @@ export function scanImage(img, layout, opts) {
   }
 }
 
-/** Fast path for live frames: marker detection only, no sampling. */
+/**
+ * Fast path for live frames: marker detection only, no sampling.
+ * opts.format === "spm-kom28" switches to the red frame detector (js/omr/redform.js).
+ */
 export function detectMarkers(img, opts) {
+  if (opts && opts.format === "spm-kom28") return detectRedForm(img, opts);
   try {
     if (!isValidImage(img)) return { found: false, corners: null, error: "IMAGE_TOO_SMALL" };
     const o = mergeOpts(opts);

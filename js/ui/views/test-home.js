@@ -7,6 +7,7 @@ import { uuid } from '../../util/uuid.js';
 import { S } from '../strings.ms.js';
 import { confirmDialog, toast } from '../components.js';
 import { loadTest, keyComplete, keyFilled, enc } from '../helpers.js';
+import { isRedForm } from '../../omr/layout.js';
 
 export async function render(ctx) {
   const { test, notFound } = await loadTest(ctx.params.id);
@@ -56,7 +57,7 @@ export async function render(ctx) {
       link(S.home.key, `#/ujian/${id}/skema`),
       link(S.home.results, `#/ujian/${id}/keputusan`, S.home.papers(results.length)),
       link(S.home.analysis, `#/ujian/${id}/analisis`),
-      link(S.home.template, `#/ujian/${id}/templat`),
+      link(isRedForm(test.layoutConfig) ? S.home.templateSpm : S.home.template, `#/ujian/${id}/templat`),
       link(S.home.roster, `#/ujian/${id}/roster`, S.roster.count(test.roster.length))),
     h('div', { class: 'row' },
       h('button', { class: 'btn btn--secondary', type: 'button', onclick: exportCsv, disabled: results.length === 0 }, S.home.export),

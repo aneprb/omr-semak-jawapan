@@ -586,3 +586,28 @@ python tools\run_tests.py
 | Telefon melalui HTTP tiada kamera langsung/SW | Sandaran `<input capture>`; pilihan HTTPS didokumenkan |
 | Kehilangan data (pelayar padam storan) | `navigator.storage.persist()` dipohon; peringatan sandaran jika `lastBackupAt` > 7 hari |
 | Geometri JS dan Python bercapah | Fixture emas + ujian padanan wajib |
+
+## 11. Borang SPM dakwat merah (LPM/KOM 28)
+
+Borang rasmi "Kertas Jawapan Objektif SPM" tiada penanda hitam; enjin berasingan `js/omr/redform.js`,
+dipilih apabila `layout.format === "spm-kom28"` (`scanImage` / `detectMarkers` dalam `scan.js`).
+
+- **Geometri**: `js/omr/forms/spm-kom28.js`, dijana oleh `tools/measure_spm.py` daripada gambar sebenar.
+  Bingkai rujukan = panel jawapan (garis menegak kiri, garis mendatar di bawah kotak pengawas, bingkai luar
+  kanan/bawah), bukan bingkai luar borang.
+- **Saluran**: peta kemerahan `rn` + saluran "red dropout" `rp` -> garis Hough -> calon segiempat (skor
+  didominasi liputan garis supaya panel tidak ditenggelami varian bingkai luar) -> padanan kekisi per blok
+  5 soalan + per baris menggunakan templat **gumpalan** (pusat + garis luar separuh skala pada peta kabur
+  kotak) -> homografi kuasa dua terkecil -> sampel isian dalam `rp` -> `decide.js`.
+- **Kenapa gumpalan, bukan garis luar**: garis elips bercetak nipis, nombor soalan dan huruf A-D tebal;
+  padanan garis luar sahaja mempunyai dua puncak (±setengah bulatan) dan terkunci ke kiri.
+- **Penerimaan**: skor gumpalan selepas padanan >= 1.4 T (T = 0.3 x persentil-99 kemerahan). Gambar sebenar:
+  panel betul ~1.8 T, calon salah terbaik ~1.07 T, 180 darjah ~1.0 T.
+- **Resolusi**: imbasan penuh 1600 px; pengesanan langsung perlukan >= 1200 px (garis panel hilang di bawah
+  itu). Kamera kini mengambil bingkai pengesanan 640 px — mesti dinaikkan untuk borang merah.
+- **Ujian**: `tests/redform.test.js` (gambar sebenar dalam `tests/fixtures/real/`, tidak dikomit; dilangkau jika tiada).
+
+**Integrasi UI (siap 2026-11-16)**: `layoutConfig.format = "spm-kom28"` (A-D, 1..80 soalan, idDigits 0) dipilih
+di `test-form.js`; `buildLayout` menghantar ke `buildSpmLayout`; `sandaran` mengekalkan `format`; paparan imbas
+hantar `{ format }` ke `client.detect` dengan bingkai 1200 px dan mesej `NO_FRAME`; templat diganti panduan.
+Ujian: `tests/spm-ui.test.js`. Belum: lebih banyak gambar sebenar untuk menguji ketahanan (cahaya, sudut, telefon).

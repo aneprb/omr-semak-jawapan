@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-EXCLUDE_DIRS = {"tests", "tools", "docs", "__pycache__", ".git"}
+EXCLUDE_DIRS = {"tests", "tools", "docs", "scratch", "__pycache__", ".git"}
 EXCLUDE_FILES = {"sw.js", "precache-manifest.js", "README.md", ".gitignore", "start.bat", "start-lan.bat"}
 EXTS = {".html", ".js", ".mjs", ".css", ".json", ".png", ".svg", ".webmanifest", ".ico", ".woff2", ".txt"}
 

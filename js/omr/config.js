@@ -14,4 +14,14 @@ export const DEFAULTS = {
   sampleRadiusFrac: 0.6, // sample inside a disc of 0.6 r (avoid the printed outline)
   sampleGrid: 7, // 7x7 grid inside the disc (~37 points)
   thresholds: { blank: 0.2, mark: 0.45, multiRatio: 0.75, minGap: 0.2 },
+  // Red-ink forms (js/omr/redform.js, docs/PLAN.md section 11)
+  red: {
+    maxSide: 1600, // working resolution for frame + lattice
+    detectMaxSide: 1200, // live frames (camera must grab at least this size for red forms)
+    maxQuads: 80, // frame candidates screened against the bubble lattice (best 3 get the full fit)
+    inner: 0.62, // sample inside the ellipse scaled by this
+    blackFrac: 0.3, // graphite reflectance relative to paper (fill = (white - g) / (white * (1 - blackFrac)))
+    minWhite: 45, // median paper level in the red-dropout channel; below -> LOW_CONTRAST
+    thresholds: {}, // per-format overrides of DEFAULTS.thresholds
+  },
 };

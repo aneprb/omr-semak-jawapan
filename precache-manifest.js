@@ -1,5 +1,5 @@
 /* DIJANA oleh tools/list_assets.py - jangan edit. */
-self.CACHE_VERSION = "3addbcdcbfc1";
+self.CACHE_VERSION = "f88dc6a327ff";
 self.PRECACHE = [
   "./",
   "css/app.css",
@@ -23,11 +23,13 @@ self.PRECACHE = [
   "js/omr/components.js",
   "js/omr/config.js",
   "js/omr/decide.js",
+  "js/omr/forms/spm-kom28.js",
   "js/omr/homography.js",
   "js/omr/image.js",
   "js/omr/layout.js",
   "js/omr/markers.js",
   "js/omr/overlay.js",
+  "js/omr/redform.js",
   "js/omr/sampler.js",
   "js/omr/scan.js",
   "js/omr/threshold.js",

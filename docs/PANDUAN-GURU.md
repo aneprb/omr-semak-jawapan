@@ -88,6 +88,7 @@ Perkara penting di iPhone:
    - **Nama ujian** (wajib): contoh **Ujian Bulanan 3**. Panjang 1 hingga 80 aksara.
    - **Kelas** (pilihan): contoh **5 Cerdik**.
    - **Mata pelajaran** (pilihan): contoh **Sains**.
+   - **Jenis kertas jawapan**: pilih **Kertas cetakan app** (kertas yang dicetak daripada app ini) atau **Borang SPM (merah)** (lihat bahagian 4a).
    - **Bilangan soalan**: masukkan nombor dari **10 hingga 60**.
    - **Bilangan pilihan**: pilih **A–D** (4 pilihan) atau **A–E** (5 pilihan).
    - **Digit kod pelajar**: masukkan **0 hingga 6**. Pilih **0** jika tidak mahu guna kod pelajar. Kod pelajar ialah nombor giliran atau nombor pendaftaran yang dihitamkan murid pada kertas.
@@ -97,6 +98,16 @@ Perkara penting di iPhone:
 > Susun atur kertas ditentukan oleh tetapan ini. Jika sudah ada keputusan, susun atur tidak boleh diubah. Untuk susun atur baharu, guna **Duplikasi ujian** (lihat bahagian 13).
 
 > 📷 [Gambar: Borang Ujian Baharu dengan semua medan diisi]
+
+### 4a. Guna borang SPM rasmi (dakwat merah)
+
+App boleh membaca borang rasmi **"Kertas Jawapan Objektif SPM" (LPM/KOM 28)** yang dicetak merah.
+
+1. Pada **Jenis kertas jawapan**, pilih **Borang SPM (merah)**.
+2. **Bilangan soalan**: **1 hingga 80**. Pilihan sentiasa **A–D** dan tiada kod pelajar (taip nama murid semasa menyemak).
+3. Tiada templat untuk dicetak. Pautan **Panduan borang SPM** di ringkasan ujian memberi tip mengimbas.
+4. Semasa mengimbas: letak borang di atas permukaan rata, pastikan **seluruh kawasan jawapan (bingkai merah bersoalan 1–80)** kelihatan, cahaya sekata dan tiada pantulan. Borang yang terbalik (180°) dibaca dengan betul.
+5. Murid mesti menghitamkan bulatan dengan **pensel 2B**. Dakwat merah borang tidak dikira sebagai tanda.
 
 ---
 

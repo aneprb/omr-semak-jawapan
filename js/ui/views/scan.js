@@ -1,7 +1,7 @@
 import { h } from '../../util/dom.js';
 import { warn } from '../../util/log.js';
 import { getSetting } from '../../data/repo.js';
-import { buildLayout } from '../../omr/layout.js';
+import { buildLayout, isRedForm } from '../../omr/layout.js';
 import * as client from '../../omr/client.js';
 import { cameraSupported, startCamera, stopCamera, cameraIsDead, createAutoCapture, grabFrame, fileToImageData, pickPhoto } from '../camera.js';
 import { isIOS } from '../../util/platform.js';
@@ -16,6 +16,7 @@ const ERR = {
   BAD_GEOMETRY: () => S.scan.failNoMarkers,
   LOW_CONTRAST: () => `${S.scan.failGeneric} ${S.scan.hintLight}`,
   IMAGE_TOO_SMALL: () => `Gambar terlalu kecil. ${S.scan.hintTooFar}`,
+  NO_FRAME: () => S.scan.failNoFrame,
 };
 
 export async function render(ctx) {
@@ -31,6 +32,12 @@ export async function render(ctx) {
   }
 
   const layout = buildLayout(test.layoutConfig);
+  // Official SPM red form: separate engine (redform.js); its thin red lines need >= 1200 px live frames.
+  const red = isRedForm(test.layoutConfig);
+  const detectOpts = red ? { format: layout.format } : undefined;
+  const msgSearching = red ? S.scan.searchingSpm : S.scan.searching;
+  const msgPartial = red ? S.scan.partialSpm : S.scan.found(2);
+  const msgHolding = red ? S.scan.holdingSpm : S.scan.holding;
   const [thresholds, autoPref] = await Promise.all([getSetting('thresholds', null), getSetting('autoCapture', true)]);
   const scanOpts = thresholds ? { thresholds: { ...thresholds } } : undefined;
 
@@ -40,7 +47,7 @@ export async function render(ctx) {
   const video = h('video', { 'aria-hidden': 'true', playsinline: '', 'webkit-playsinline': '', autoplay: '', muted: true });
   video.muted = true; video.playsInline = true; // attribute alone is not enough on some iOS versions
   const frame = h('div', { class: 'frame', 'data-found': '0' }, h('i'), h('i'), h('i'), h('i'));
-  const status = h('div', { class: 'scan__status', 'aria-live': 'polite' }, S.scan.searching);
+  const status = h('div', { class: 'scan__status', 'aria-live': 'polite' }, msgSearching);
   const retryBtn = h('button', { class: 'btn btn--lg', type: 'button', hidden: true }, S.scan.retry);
   const shutter = h('button', { class: 'shutter', type: 'button', 'aria-label': S.scan.capture, hidden: true });
   const photoBtn = h('button', { class: 'btn btn--ghost', type: 'button' }, S.scan.takePhoto);
@@ -58,7 +65,7 @@ export async function render(ctx) {
   }
 
   async function detect(img) {
-    const r = await client.detect(img);
+    const r = await client.detect(img, detectOpts);
     if (r && r.skipped) return lastDetect ?? { found: false, corners: null, error: null };
     lastDetect = r;
     return r;
@@ -68,10 +75,11 @@ export async function render(ctx) {
     if (!live || !autoOn || busy || gone) return;
     auto = auto ?? createAutoCapture({
       detect,
+      detectMaxSide: red ? 1200 : 640,
       onStatus: (st) => {
-        if (st === 'searching') { setFrame(0); setStatus(S.scan.searching); }
-        else if (st === 'partial') { setFrame(2); setStatus(S.scan.found(2)); }
-        else if (st === 'holding') { setFrame(4, 'hold'); setStatus(S.scan.holding); }
+        if (st === 'searching') { setFrame(0); setStatus(msgSearching); }
+        else if (st === 'partial') { setFrame(2); setStatus(msgPartial); }
+        else if (st === 'holding') { setFrame(4, 'hold'); setStatus(msgHolding); }
         else if (st === 'captured') { setFrame(4); setStatus(S.scan.capturing); }
       },
       onCapture: (img) => process(img),
@@ -132,7 +140,7 @@ export async function render(ctx) {
     if (!live || busy) return;
     try { await process(grabFrame(video, 1600)); } catch { setStatus(S.scan.failGeneric); }
   });
-  retryBtn.addEventListener('click', () => { retryBtn.hidden = true; setStatus(S.scan.searching); if (live) startAuto(); else fromFile(); });
+  retryBtn.addEventListener('click', () => { retryBtn.hidden = true; setStatus(msgSearching); if (live) startAuto(); else fromFile(); });
   autoBtn.addEventListener('click', () => {
     autoOn = !autoOn;
     autoBtn.setAttribute('aria-pressed', String(autoOn));
@@ -167,7 +175,7 @@ export async function render(ctx) {
       let torchOk = false;
       try { torchOk = !isIOS() && !!stream.getVideoTracks()[0]?.getCapabilities?.().torch; } catch { /* ignore */ }
       torchBtn.hidden = !torchOk;
-      setStatus(S.scan.searching);
+      setStatus(msgSearching);
       startAuto();
     } catch (e) {
       warn('scan', `kamera: ${e?.name}`);

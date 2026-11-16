@@ -1,3 +1,5 @@
 tests/fixtures/sheets/generated/
 __pycache__/
 *.pyc
+tests/fixtures/real/
+scratch/

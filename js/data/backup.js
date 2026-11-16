@@ -28,7 +28,8 @@ function checkTest(t, path, errors) {
   const lc = t.layoutConfig;
   let n = 0;
   let c = 0;
-  if (!isObj(lc) || lc.version !== 1 || !isInt(lc.numQuestions, 1, 200) || !isInt(lc.numChoices, 2, 5) || !isInt(lc.idDigits, 0, 10)) {
+  if (!isObj(lc) || lc.version !== 1 || !isInt(lc.numQuestions, 1, 200) || !isInt(lc.numChoices, 2, 5) || !isInt(lc.idDigits, 0, 10)
+    || !(lc.format === undefined || lc.format === 'app' || lc.format === 'spm-kom28')) {
     errors.push(`${path}.layoutConfig: tidak sah`);
   } else { n = lc.numQuestions; c = lc.numChoices; }
   if (!Array.isArray(t.key) || (n && t.key.length !== n)) errors.push(`${path}.key: panjang mesti ${n}`);
@@ -130,7 +131,10 @@ export function parseBackupText(text) {
 // Copy only known fields so unexpected keys in a file never reach the database.
 const cleanTest = (t) => ({
   id: t.id, name: t.name, subject: t.subject ?? '', className: t.className ?? '',
-  layoutConfig: { version: 1, numQuestions: t.layoutConfig.numQuestions, numChoices: t.layoutConfig.numChoices, idDigits: t.layoutConfig.idDigits },
+  layoutConfig: {
+    version: 1, numQuestions: t.layoutConfig.numQuestions, numChoices: t.layoutConfig.numChoices, idDigits: t.layoutConfig.idDigits,
+    ...(t.layoutConfig.format === 'spm-kom28' ? { format: 'spm-kom28' } : {}),
+  },
   key: [...t.key], roster: t.roster.map((r) => ({ code: r.code, name: r.name })),
   locked: t.locked, createdAt: t.createdAt, updatedAt: t.updatedAt,
 });

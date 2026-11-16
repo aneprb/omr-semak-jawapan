@@ -1,5 +1,5 @@
 /* DIJANA oleh tools/list_assets.py - jangan edit. */
-self.CACHE_VERSION = "f88dc6a327ff";
+self.CACHE_VERSION = "7771d6a36f1a";
 self.PRECACHE = [
   "./",
   "css/app.css",

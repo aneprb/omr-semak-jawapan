@@ -22,6 +22,20 @@ export async function render(ctx) {
   const importMsg = h('p', { role: 'alert', class: 'field__error', hidden: true }, S.settings.importBad);
   let mode = 'merge';
 
+  // Build id (precache CACHE_VERSION) asked from the service worker that controls this page, so a teacher
+  // can tell whether the phone still runs an older cached copy. No worker (http, first load) -> version only.
+  const versionEl = h('p', { class: 'muted num' }, S.settings.version(APP_VERSION));
+  try {
+    const ctrl = navigator.serviceWorker?.controller;
+    if (ctrl) {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e) => {
+        if (typeof e.data === 'string') versionEl.textContent = S.settings.version(APP_VERSION, e.data.slice(0, 7));
+      };
+      ctrl.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+    }
+  } catch { /* ignore */ }
+
   const saveSafe = async (k, v) => { try { await setSetting(k, v); } catch { toast(S.errors.storage, { error: true }); } };
 
   async function doExport() {
@@ -104,5 +118,5 @@ export async function render(ctx) {
     h('section', { class: 'stack' },
       h('h2', null, S.settings.about),
       h('p', { class: 'muted' }, S.settings.aboutBody),
-      h('p', { class: 'muted num' }, S.settings.version(APP_VERSION))));
+      versionEl));
 }

@@ -20,6 +20,8 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+  // Build id of the worker that controls the page (shown in Tetapan).
+  if (event.data && event.data.type === "GET_VERSION" && event.ports[0]) event.ports[0].postMessage(self.CACHE_VERSION);
 });
 
 self.addEventListener("fetch", (event) => {

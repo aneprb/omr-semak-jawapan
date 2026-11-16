@@ -169,7 +169,7 @@ export const S = {
     replaceTitle: 'Ganti semua data?', replaceBody: 'Semua ujian dan keputusan sekarang akan diganti dengan isi fail.',
     wipe: 'Padam semua data', wipeTitle: 'Padam semua data?', wipeBody: 'Semua ujian, keputusan dan tetapan di peranti ini akan hilang. Buat sandaran dahulu.', wiped: 'Semua data dipadam.',
     about: 'Tentang', aboutBody: 'Semua data disimpan di peranti ini sahaja. Tiada akaun dan tiada pelayan.',
-    version: (v) => `Versi ${v}`,
+    version: (v, build) => (build ? `Versi ${v} · binaan ${build}` : `Versi ${v}`),
     storage: 'Simpanan',
     storageUsage: (u, q) => `Digunakan ${u} daripada ${q}`,
     storagePersisted: 'Simpanan kekal: dilindungi daripada dipadam automatik.',

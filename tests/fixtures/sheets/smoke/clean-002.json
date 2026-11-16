@@ -1,0 +1,45 @@
+{
+ "profile": "clean",
+ "seed": 7,
+ "index": 1,
+ "config": {
+  "numQuestions": 20,
+  "numChoices": 5,
+  "idDigits": 4
+ },
+ "layoutCode": "Q20-C5-ID4",
+ "answers": [
+  "E",
+  "C",
+  "C",
+  "C",
+  "E",
+  "E",
+  "B",
+  "E",
+  "B",
+  "A",
+  "A",
+  "A",
+  "B",
+  "E",
+  "E",
+  "A",
+  "A",
+  "A",
+  "C",
+  "E"
+ ],
+ "idCode": "8136",
+ "lightQuestions": [],
+ "multiQuestions": [],
+ "transform": {
+  "rotationDeg": 0,
+  "rotated180": false,
+  "size": [
+   827,
+   1169
+  ]
+ },
+ "file": "clean-002.png"
+}

@@ -1,0 +1,23 @@
+{
+ "profile": "blank",
+ "seed": 7,
+ "index": 0,
+ "config": {
+  "numQuestions": 20,
+  "numChoices": 5,
+  "idDigits": 4
+ },
+ "layoutCode": "Q20-C5-ID4",
+ "answers": [],
+ "idCode": null,
+ "blankKind": "empty",
+ "expectedError": "NO_MARKERS",
+ "transform": {
+  "size": [
+   842,
+   1169
+  ],
+  "jpegQuality": 82
+ },
+ "file": "blank-001.jpg"
+}

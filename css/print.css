@@ -1,0 +1,15 @@
+/* OMR Semak Jawapan - print.css: answer-sheet template only. Black and white, A4, no browser margin. */
+@page { size: A4 portrait; margin: 0; }
+
+@media print {
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; color: #000 !important; }
+  /* Hide everything except the sheet. */
+  body * { visibility: hidden !important; }
+  .sheet, .sheet * { visibility: visible !important; }
+  .header, .tabbar, .toast-host, dialog, .banner, .no-print { display: none !important; }
+  .sheet { position: absolute; left: 0; top: 0; width: 210mm; height: 297mm; margin: 0; padding: 0; border: 0; box-shadow: none;
+    background: #fff; overflow: hidden; page-break-after: avoid; break-after: avoid; }
+  .sheet svg { display: block; width: 210mm; height: 297mm; }
+  .sheet svg * { color: #000 !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-shadow: none !important; text-shadow: none !important; }
+}

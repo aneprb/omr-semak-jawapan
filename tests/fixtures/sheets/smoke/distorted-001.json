@@ -1,0 +1,69 @@
+{
+ "profile": "distorted",
+ "seed": 7,
+ "index": 0,
+ "config": {
+  "numQuestions": 20,
+  "numChoices": 5,
+  "idDigits": 4
+ },
+ "layoutCode": "Q20-C5-ID4",
+ "answers": [
+  "A",
+  "A",
+  "E",
+  "E",
+  "C",
+  "A",
+  "B",
+  "B",
+  "A",
+  "D",
+  "B",
+  null,
+  "B",
+  "C",
+  "A",
+  "B",
+  "E",
+  "B",
+  "D",
+  "B"
+ ],
+ "idCode": "2967",
+ "lightQuestions": [],
+ "multiQuestions": [],
+ "transform": {
+  "rotationDeg": 1.79,
+  "tiltXDeg": -9.51,
+  "tiltYDeg": 13.03,
+  "rotated180": true,
+  "size": [
+   888,
+   1195
+  ],
+  "blurSigma": 0.07,
+  "noiseSigma": 4.56,
+  "lightMin": 0.98,
+  "jpegQuality": 82,
+  "corners": [
+   [
+    746.4,
+    1101.0
+   ],
+   [
+    101.8,
+    1058.6
+   ],
+   [
+    155.6,
+    177.2
+   ],
+   [
+    744.2,
+    134.7
+   ]
+  ]
+ },
+ "file": "distorted-001.jpg"
+}

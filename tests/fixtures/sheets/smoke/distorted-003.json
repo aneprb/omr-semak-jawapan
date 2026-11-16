@@ -1,0 +1,114 @@
+{
+ "profile": "distorted",
+ "seed": 7,
+ "index": 2,
+ "config": {
+  "numQuestions": 60,
+  "numChoices": 4,
+  "idDigits": 2
+ },
+ "layoutCode": "Q60-C4-ID2",
+ "answers": [
+  "D",
+  "B",
+  "B",
+  "D",
+  "C",
+  "B",
+  "A",
+  "C",
+  "C",
+  "A",
+  "C",
+  "A",
+  "D",
+  "A",
+  "C",
+  "MULTI",
+  "B",
+  null,
+  "C",
+  "C",
+  null,
+  "B",
+  "B",
+  "B",
+  null,
+  "C",
+  "C",
+  "A",
+  null,
+  "D",
+  "D",
+  "C",
+  "A",
+  "A",
+  "B",
+  "C",
+  "A",
+  "D",
+  "D",
+  "A",
+  "A",
+  null,
+  "D",
+  "B",
+  "D",
+  "A",
+  "C",
+  "D",
+  "B",
+  "A",
+  "A",
+  "D",
+  "A",
+  "D",
+  "MULTI",
+  "D",
+  "A",
+  null,
+  "A",
+  "D"
+ ],
+ "idCode": "19",
+ "lightQuestions": [
+  56
+ ],
+ "multiQuestions": [
+  16,
+  55
+ ],
+ "transform": {
+  "rotationDeg": 7.61,
+  "tiltXDeg": 0.96,
+  "tiltYDeg": 11.37,
+  "rotated180": false,
+  "size": [
+   807,
+   1144
+  ],
+  "blurSigma": 0.45,
+  "noiseSigma": 11.2,
+  "lightMin": 0.95,
+  "jpegQuality": 82,
+  "corners": [
+   [
+    185.0,
+    151.9
+   ],
+   [
+    724.3,
+    194.8
+   ],
+   [
+    608.5,
+    1021.1
+   ],
+   [
+    90.9,
+    917.9
+   ]
+  ]
+ },
+ "file": "distorted-003.jpg"
+}

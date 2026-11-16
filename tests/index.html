@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<title>Ujian OMR Semak Jawapan</title>
+<style>body{font:13px monospace;margin:1rem}pre{white-space:pre-wrap}</style>
+</head>
+<body>
+<h1>Ujian OMR Semak Jawapan</h1>
+<pre id="summary">sedang berjalan...</pre>
+<script type="module">
+import { drainRegistered, SkipError, notes } from "./harness.js";
+
+// Senarai fail ujian (PLAN 5). Fail yang belum wujud dilaporkan SKIP.
+const FILES = [
+  "layout", "homography", "threshold", "components", "markers", "decide",
+  "scan-synthetic", "grade", "stats", "items", "csv", "backup", "precache",
+  "template", "autocapture", "flow", "metrics", "platform",
+];
+
+const only = new URLSearchParams(location.search).get("only");
+const lines = [];
+let pass = 0, fail = 0, skip = 0;
+
+function log(tag, text) { lines.push(`${tag} ${text}`); }
+
+for (const f of FILES) {
+  if (only && !only.split(",").includes(f)) continue;
+  const url = new URL(`./${f}.test.js`, location.href).href;
+  let exists = false;
+  try { exists = (await fetch(url, { method: "HEAD" })).ok; } catch {}
+  if (!exists) { skip++; log("SKIP", `${f}.test.js (fail belum wujud)`); continue; }
+
+  let mod;
+  drainRegistered();
+  try {
+    mod = await import(url);
+  } catch (e) {
+    fail++; log("FAIL", `${f}.test.js import gagal: ${e && e.message}`);
+    continue;
+  }
+  const cases = [...(Array.isArray(mod.default) ? mod.default : []), ...drainRegistered()];
+  if (!cases.length) { skip++; log("SKIP", `${f}.test.js (tiada ujian dieksport)`); continue; }
+
+  for (const c of cases) {
+    const label = `${f}: ${c.name}`;
+    try {
+      await c.fn();
+      pass++; log("PASS", label);
+    } catch (e) {
+      if (e instanceof SkipError || (e && e.name === "SkipError")) {
+        skip++; log("SKIP", `${label} -- ${e.message}`);
+      } else {
+        fail++; log("FAIL", `${label} -- ${e && e.message}`);
+      }
+    }
+  }
+}
+
+document.getElementById("summary").textContent =
+  lines.join("\n") + (notes.length ? "\n\n" + notes.map((n) => "NOTE " + n).join("\n") : "") + `\n\nPASS ${pass} / FAIL ${fail}\nSKIP ${skip}\nSELESAI\n`;
+document.title = `PASS ${pass} / FAIL ${fail}`;
+// tools/run_tests.py menerima laporan melalui POST (tidak bergantung pada virtual-time yang
+// tidak menunggu I/O sebenar seperti IndexedDB). Diabaikan jika dibuka secara manual.
+try { await fetch("/__report", { method: "POST", body: document.getElementById("summary").textContent }); } catch {}
+</script>
+</body>
+</html>

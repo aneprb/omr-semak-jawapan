@@ -1,0 +1,35 @@
+{
+ "profile": "clean",
+ "seed": 7,
+ "index": 0,
+ "config": {
+  "numQuestions": 10,
+  "numChoices": 4,
+  "idDigits": 0
+ },
+ "layoutCode": "Q10-C4-ID0",
+ "answers": [
+  "A",
+  "B",
+  "C",
+  "B",
+  "D",
+  "B",
+  "C",
+  "B",
+  "B",
+  "B"
+ ],
+ "idCode": null,
+ "lightQuestions": [],
+ "multiQuestions": [],
+ "transform": {
+  "rotationDeg": 0,
+  "rotated180": false,
+  "size": [
+   827,
+   1169
+  ]
+ },
+ "file": "clean-001.png"
+}

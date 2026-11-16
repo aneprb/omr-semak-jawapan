@@ -1,0 +1,88 @@
+{
+ "generator": "tools/gen_sheets.py",
+ "seed": 7,
+ "note": "set smoke kecil (dikomit)",
+ "count": 8,
+ "items": [
+  {
+   "file": "clean-001.png",
+   "expected": "clean-001.json",
+   "profile": "clean",
+   "layoutCode": "Q10-C4-ID0",
+   "size": [
+    827,
+    1169
+   ]
+  },
+  {
+   "file": "clean-002.png",
+   "expected": "clean-002.json",
+   "profile": "clean",
+   "layoutCode": "Q20-C5-ID4",
+   "size": [
+    827,
+    1169
+   ]
+  },
+  {
+   "file": "distorted-001.jpg",
+   "expected": "distorted-001.json",
+   "profile": "distorted",
+   "layoutCode": "Q20-C5-ID4",
+   "size": [
+    888,
+    1195
+   ]
+  },
+  {
+   "file": "distorted-002.jpg",
+   "expected": "distorted-002.json",
+   "profile": "distorted",
+   "layoutCode": "Q40-C5-ID6",
+   "size": [
+    878,
+    1154
+   ]
+  },
+  {
+   "file": "distorted-003.jpg",
+   "expected": "distorted-003.json",
+   "profile": "distorted",
+   "layoutCode": "Q60-C4-ID2",
+   "size": [
+    807,
+    1144
+   ]
+  },
+  {
+   "file": "blank-001.jpg",
+   "expected": "blank-001.json",
+   "profile": "blank",
+   "layoutCode": "Q20-C5-ID4",
+   "size": [
+    842,
+    1169
+   ]
+  },
+  {
+   "file": "blank-003.jpg",
+   "expected": "blank-003.json",
+   "profile": "blank",
+   "layoutCode": "Q20-C5-ID4",
+   "size": [
+    827,
+    1169
+   ]
+  },
+  {
+   "file": "key-001.png",
+   "expected": "key-001.json",
+   "profile": "key",
+   "layoutCode": "Q40-C5-ID6",
+   "size": [
+    827,
+    1169
+   ]
+  }
+ ]
+}

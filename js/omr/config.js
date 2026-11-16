@@ -22,6 +22,7 @@ export const DEFAULTS = {
     inner: 0.62, // sample inside the ellipse scaled by this
     blackFrac: 0.3, // graphite reflectance relative to paper (fill = (white - g) / (white * (1 - blackFrac)))
     minWhite: 45, // median paper level in the red-dropout channel; below -> LOW_CONTRAST
-    thresholds: {}, // per-format overrides of DEFAULTS.thresholds
+    // pencil reads lighter through the red print: real photos give marks 0.27-1.0, empty bubbles <= 0.09
+    thresholds: { blank: 0.15, mark: 0.25, minGap: 0.15 },
   },
 };

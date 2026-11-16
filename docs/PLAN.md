@@ -601,8 +601,9 @@ dipilih apabila `layout.format === "spm-kom28"` (`scanImage` / `detectMarkers` d
   kotak) -> homografi kuasa dua terkecil -> sampel isian dalam `rp` -> `decide.js`.
 - **Kenapa gumpalan, bukan garis luar**: garis elips bercetak nipis, nombor soalan dan huruf A-D tebal;
   padanan garis luar sahaja mempunyai dua puncak (±setengah bulatan) dan terkunci ke kiri.
-- **Penerimaan**: skor gumpalan selepas padanan >= 1.4 T (T = 0.3 x persentil-99 kemerahan). Gambar sebenar:
-  panel betul ~1.8 T, calon salah terbaik ~1.07 T, 180 darjah ~1.0 T.
+- **Penerimaan** (1.1.1): skor teguh (median gelembung - median jurang pada peta kemerahan nipis) >= 10,
+  segiempat munasabah (lebar >= 0.15 sisi panjang, nisbah aspek 0.6-1.6x, cembung) dan >= 90% pusat gelembung
+  dalam gambar. Gambar sebenar: betul 15-17, varian blok/180 salah 11-12; separuh borang -> NO_FRAME.
 - **Resolusi**: imbasan penuh 1600 px; pengesanan langsung perlukan >= 1200 px (garis panel hilang di bawah
   itu). Kamera kini mengambil bingkai pengesanan 640 px — mesti dinaikkan untuk borang merah.
 - **Ujian**: `tests/redform.test.js` (gambar sebenar dalam `tests/fixtures/real/`, tidak dikomit; dilangkau jika tiada).
@@ -610,4 +611,18 @@ dipilih apabila `layout.format === "spm-kom28"` (`scanImage` / `detectMarkers` d
 **Integrasi UI (siap 2026-11-16)**: `layoutConfig.format = "spm-kom28"` (A-D, 1..80 soalan, idDigits 0) dipilih
 di `test-form.js`; `buildLayout` menghantar ke `buildSpmLayout`; `sandaran` mengekalkan `format`; paparan imbas
 hantar `{ format }` ke `client.detect` dengan bingkai 1200 px dan mesej `NO_FRAME`; templat diganti panduan.
-Ujian: `tests/spm-ui.test.js`. Belum: lebih banyak gambar sebenar untuk menguji ketahanan (cahaya, sudut, telefon).
+Ujian: `tests/spm-ui.test.js`.
+
+**Gambar telefon sebenar (1.1.1, 2026-11-16)**: 5 gambar guru (terpotong, jauh, senget, berputar + perspektif,
+pen merah / komputer riba / tanda guru) kini dibaca tepat. Perubahan utama dalam `redform.js`:
+- kemerahan dengan lantai `RN_FLOOR` (piksel gelap bukan merah); topeng garis "rabung" (rn - purata setempat) dan
+  peta skor "nipis" supaya objek merah pejal (pen) hanya tinggal tepi;
+- calon 3 garis (sisi hilang dilengkapkan dari nisbah panel) dan liputan garis hanya dalam gambar;
+- `profileCandidates`: calon tanpa garis dari profil lajur (12 lajur + lajur nombor) dan baris (30 baris), dengan
+  sudut baris berasingan (ricih perspektif) dan pilihan anjakan blok sebelum mendaki;
+- `refineCorners`: daki bukit sudut kasar-ke-halus memaksimumkan kontras kekisi; ujian varian (+-2 blok,
+  +-1 kumpulan lajur, 180 darjah) dengan skor teguh median; `saneQuad` menolak kekisi yang runtuh ke satu objek;
+- soalan yang gelembungnya terkeluar dari gambar -> `UNCERTAIN` tanpa pilihan (`offImage`);
+- ambang borang merah: kosong 0.15, hitam 0.25, jurang 0.15 (pensel lebih pudar melalui cetakan merah);
+  ambang guru di Tetapan hanya menimpa jika berbeza daripada lalai hitam.
+Masa imbasan penuh ~1-1.4 s pada desktop.

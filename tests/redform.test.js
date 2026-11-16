@@ -9,17 +9,25 @@ const LAYOUT = { format: "spm-kom28", config: { numQuestions: 80 } };
 // Jawapan yang dihitamkan pada gambar (disahkan secara visual): S1-20, S9 kosong, S21-80 kosong.
 const EXPECTED = "DDAABDDD-DAACBABBACC" + "-".repeat(60);
 
-let cached;
-async function realImage() {
-  if (cached !== undefined) return cached;
+// Gambar telefon 002-006 (borang yang sama, pelbagai keadaan): terpotong di bawah, jauh, senget, berputar +
+// perspektif, pen merah dan tanda guru berdekatan. Jawapan S1-20 disahkan secara visual.
+const PHONE = ["002", "003", "004", "005", "006"];
+const PHONE_EXPECTED = "BCCBACDACCAACCAACBCB" + "-".repeat(60);
+
+const cache = new Map();
+async function loadReal(path) {
+  if (cache.has(path)) return cache.get(path);
+  let img = null;
   try {
-    const r = await fetch(new URL(REAL, import.meta.url), { method: "HEAD" });
-    cached = r.ok ? await loadImageData(new URL(REAL, import.meta.url).href) : null;
+    const r = await fetch(new URL(path, import.meta.url), { method: "HEAD" });
+    img = r.ok ? await loadImageData(new URL(path, import.meta.url).href) : null;
   } catch {
-    cached = null;
+    img = null;
   }
-  return cached;
+  cache.set(path, img);
+  return img;
 }
+const realImage = () => loadReal(REAL);
 
 function rotate180(img) {
   const n = img.width * img.height;
@@ -77,6 +85,50 @@ export default [
       if (!img) skip("tests/fixtures/real/spm-kom28-001.jpg tiada");
       const d = detectMarkers(downscale(img, 1200), { format: "spm-kom28" });
       assert(d.found, "tidak dijumpai: " + d.error);
+    },
+  },
+  ...PHONE.map((id) => ({
+    name: `gambar telefon ${id}: dikesan (imbasan + langsung), jawapan tepat`,
+    async fn() {
+      const img = await loadReal(`./fixtures/real/spm-kom28-${id}.jpg`);
+      if (!img) skip(`tests/fixtures/real/spm-kom28-${id}.jpg tiada`);
+      const r = scanImage(img, LAYOUT, {});
+      assert(r.ok, "imbasan gagal: " + r.error);
+      assertEqual(r.rotated180, false);
+      const got = answerString(r);
+      if (id === "002") {
+        // bahagian bawah terpotong: S30 dan S60 di luar gambar -> UNCERTAIN tanpa pilihan, bukan MULTIPLE
+        assertEqual(got.slice(0, 20), PHONE_EXPECTED.slice(0, 20));
+        for (const a of r.answers) if (a.status === "UNCERTAIN") assert(a.offImage && a.choice === null, "S" + a.q);
+        assert(!r.answers.some((a) => a.status === "MULTIPLE"), "MULTIPLE");
+      } else {
+        assertEqual(got, PHONE_EXPECTED);
+        assertEqual(r.answers.filter((a) => a.status !== "OK" && a.status !== "BLANK").map((a) => a.q), []);
+      }
+      const d = detectMarkers(downscale(img, 1200), { format: "spm-kom28" });
+      assert(d.found, "pengesanan langsung gagal: " + d.error);
+    },
+  })),
+  {
+    name: "separuh atas / bawah borang sahaja -> NO_FRAME (bukan kekisi palsu)",
+    async fn() {
+      const img = await realImage();
+      if (!img) skip("tests/fixtures/real/spm-kom28-001.jpg tiada");
+      const { width: w, height: h } = img;
+      const hh = Math.floor(h * 0.45);
+      const top = { width: w, height: hh, data: img.data.slice(0, w * hh * 4) };
+      const bot = { width: w, height: hh, data: img.data.slice(w * (h - hh) * 4) };
+      assertEqual(scanImage(top, LAYOUT, {}).error, "NO_FRAME");
+      assertEqual(scanImage(bot, LAYOUT, {}).error, "NO_FRAME");
+    },
+  },
+  {
+    name: "ambang guru yang sama dengan lalai hitam tidak menimpa ambang borang merah",
+    async fn() {
+      const img = await loadReal("./fixtures/real/spm-kom28-005.jpg");
+      if (!img) skip("tests/fixtures/real/spm-kom28-005.jpg tiada");
+      const r = scanImage(img, LAYOUT, { thresholds: { blank: 0.2, mark: 0.45, multiRatio: 0.75, minGap: 0.2 } });
+      assertEqual(answerString(r), PHONE_EXPECTED);
     },
   },
 ];

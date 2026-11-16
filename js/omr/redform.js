@@ -1,7 +1,7 @@
 // Red-ink answer sheets (KPM "Kertas Jawapan Objektif SPM", LPM/KOM 28). Pure JS, no DOM.
 //
 // Pipeline (docs/PLAN.md section 11):
-//   1. redness map  rn = (R - max(G,B)) / max(R,50)  (lighting independent) + "red dropout" gray
+//   1. redness map  rn = (R - max(G,B)) / max(R,110)  (lighting independent) + "red dropout" gray
 //      rp = R + kappa * (R - max(G,B))  (red ink ~ paper, graphite stays dark)
 //   2. frame: long straight lines (Hough + run length) -> candidate quadrilaterals
 //   3. lattice fit: per 5-question block (then per row) local shift that maximises the match of the
@@ -18,6 +18,7 @@ import { SPM_KOM28_PARAMS as P, blockOf } from "./forms/spm-kom28.js";
 const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 
 const KAPPA = 1.0; // red dropout strength
+const RN_FLOOR = 110; // see buildMaps
 const OUTLINE_K = 12; // sample points on each ellipse outline
 const MAX_TILT_DEG = 20;
 const N_Q = P.maxQuestions;
@@ -36,7 +37,9 @@ export function buildMaps(img) {
     const m = g > b ? g : b;
     const c = r - m;
     if (c > 0) {
-      const v = (255 * c) / (r > 50 ? r : 50);
+      // denominator floor: dark pixels (laptop edges, shadows) have tiny chroma noise that would otherwise
+      // read as strongly "red" and flood the line detector; printed red ink on paper has R >> 110.
+      const v = (255 * c) / (r > RN_FLOOR ? r : RN_FLOOR);
       rn[i] = v > 255 ? 255 : v | 0;
       const q = r + KAPPA * c;
       rp[i] = q > 255 ? 255 : q;
@@ -286,6 +289,7 @@ function segCoverage(mask, w, h, p, q, band) {
     const t = 0.04 + (0.92 * i) / (n - 1);
     const x = p.x + (q.x - p.x) * t;
     const y = p.y + (q.y - p.y) * t;
+    if (x < 0 || y < 0 || x > w - 1 || y > h - 1) continue; // cropped photo: judge only the visible part
     valid++;
     let hit = false;
     for (let d = -band; d <= band && !hit; d += 1) {
@@ -295,7 +299,33 @@ function segCoverage(mask, w, h, p, q, band) {
     }
     if (hit) hits++;
   }
-  return valid ? hits / valid : 0;
+  return valid >= 8 ? hits / valid : 0;
+}
+
+/** Unit direction along a line, pointing right (H) or down (V). */
+function lineDir(l, family) {
+  let dx = -l.ny;
+  let dy = l.nx;
+  if ((family === "H" && dx < 0) || (family === "V" && dy < 0)) {
+    dx = -dx;
+    dy = -dy;
+  }
+  return { x: dx, y: dy };
+}
+
+/** Drop near-duplicate lines (a dense texture yields many almost identical Hough peaks). */
+function dedupeLines(lines, w, h, family, n) {
+  const out = [];
+  const tol = 0.015 * Math.hypot(w, h);
+  const mid = family === "H" ? w / 2 : h / 2;
+  for (const l of lines) {
+    const a = Math.atan2(l.ny, l.nx);
+    const at = lineAt(l, mid, family === "H");
+    if (out.some((o) => Math.abs(Math.atan2(o.ny, o.nx) - a) < (3 * Math.PI) / 180 && Math.abs(lineAt(o, mid, family === "H") - at) < tol)) continue;
+    out.push(l);
+    if (out.length >= n) break;
+  }
+  return out;
 }
 
 /** Candidate frame quadrilaterals (image order TL, TR, BR, BL) from long straight lines. */
@@ -303,10 +333,10 @@ function frameCandidates(mask, w, h, opts) {
   const pts = collectPoints(mask, w, h, 260000);
   if (pts.n < 200) return { quads: [], lines: 0 };
   const nl = (opts && opts.nLines) || 14;
-  const hs = houghLines(mask, pts, w, h, "H", 140).slice(0, nl);
-  const vs = houghLines(mask, pts, w, h, "V", 140).slice(0, nl);
+  const hs = dedupeLines(houghLines(mask, pts, w, h, "H", 140), w, h, "H", nl);
+  const vs = dedupeLines(houghLines(mask, pts, w, h, "V", 140), w, h, "V", nl);
   const dbg = opts && opts.debug;
-  const why = { aspect: 0, area: 0, angle: 0, cov: 0, ok: 0, outside: 0 };
+  const why = { aspect: 0, area: 0, angle: 0, cov: 0, ok: 0, outside: 0, ok3: 0 };
   if (dbg) {
     dbg.pts = pts.n;
     dbg.hs = hs.map((l) => ({ len: Math.round(l.len), p0: l.p0, p1: l.p1 }));
@@ -380,6 +410,72 @@ function frameCandidates(mask, w, h, opts) {
       }
     }
   }
+  // 3-line candidates: one side of the panel is missing (cropped photo, faint print); complete it from the known
+  // panel aspect. The corner refinement in selectFrame() fixes the perspective error of this guess.
+  const A = P.aspect;
+  const far = 0.3;
+  const insideFar = (p) => p && p.x > -far * w && p.x < (1 + far) * w && p.y > -far * h && p.y < (1 + far) * h;
+  const add3 = (corners, real) => {
+    const [TL, TR, BR, BL] = corners;
+    if (!corners.every(insideFar)) return;
+    const segs = { top: [TL, TR], bottom: [BL, BR], left: [TL, BL], right: [TR, BR] };
+    const cov = real.map((k) => segCoverage(mask, w, h, segs[k][0], segs[k][1], band));
+    const minCov = Math.min(...cov);
+    const meanCov = cov.reduce((x, y) => x + y, 0) / cov.length;
+    if (minCov < 0.35 || meanCov < 0.55) return;
+    for (const ang of [angleDeg(BL, TL, TR), angleDeg(TL, TR, BR), angleDeg(TR, BR, BL), angleDeg(BR, BL, TL)]) if (ang < 65 || ang > 115) return;
+    const area = polyArea(corners);
+    if (area < 0.08 * w * h) return;
+    why.ok3++;
+    quads.push({ corners, score: 0.8 * meanCov * meanCov * minCov * Math.pow(Math.min(1, area / (w * h)), 0.25), cov: meanCov, area, partial: true });
+  };
+  const along = (p, d, t) => ({ x: p.x + d.x * t, y: p.y + d.y * t });
+  for (const top of hs) {
+    const dT = lineDir(top, "H");
+    for (let k = 0; k < vs.length; k++) {
+      for (let m = 0; m < vs.length; m++) {
+        if (k === m) continue;
+        const left = vs[k];
+        const right = vs[m];
+        if (lineAt(left, midY, false) >= lineAt(right, midY, false) - w * 0.1) continue;
+        const TL = intersect(top, left);
+        const TR = intersect(top, right);
+        if (!inside(TL) || !inside(TR)) continue;
+        const W = dist(TL, TR);
+        const dL = lineDir(left, "V");
+        const dR = lineDir(right, "V");
+        add3([TL, TR, along(TR, dR, A * W), along(TL, dL, A * W)], ["top", "left", "right"]); // no bottom
+      }
+    }
+    for (const bot of hs) {
+      if (bot === top || lineAt(top, midX, true) >= lineAt(bot, midX, true) - h * 0.1) continue;
+      const dB = lineDir(bot, "H");
+      for (const side of vs) {
+        const P1 = intersect(top, side);
+        const P2 = intersect(bot, side);
+        if (!inside(P1) || !inside(P2)) continue;
+        const W = dist(P1, P2) / A;
+        add3([P1, along(P1, dT, W), along(P2, dB, W), P2], ["top", "bottom", "left"]); // side = left, no right
+        add3([along(P1, dT, -W), P1, P2, along(P2, dB, -W)], ["top", "bottom", "right"]); // side = right, no left
+      }
+    }
+  }
+  for (const bot of hs) {
+    for (let k = 0; k < vs.length; k++) {
+      for (let m = 0; m < vs.length; m++) {
+        if (k === m) continue;
+        const left = vs[k];
+        const right = vs[m];
+        if (lineAt(left, midY, false) >= lineAt(right, midY, false) - w * 0.1) continue;
+        const BL = intersect(bot, left);
+        const BR = intersect(bot, right);
+        if (!inside(BL) || !inside(BR)) continue;
+        const W = dist(BL, BR);
+        add3([along(BL, lineDir(left, "V"), -A * W), along(BR, lineDir(right, "V"), -A * W), BR, BL], ["bottom", "left", "right"]); // no top
+      }
+    }
+  }
+
   quads.sort((a, b) => b.score - a.score);
   // drop near-duplicates
   const tol = 0.012 * Math.hypot(w, h);
@@ -390,6 +486,166 @@ function frameCandidates(mask, w, h, opts) {
     if (out.length >= (opts && opts.maxQuads ? opts.maxQuads : 6)) break;
   }
   return { quads: out, lines: hs.length + vs.length };
+}
+
+// ---------------------------------------------------------------- profile candidates
+/**
+ * Line-independent candidates from the bubble lattice itself (far / tilted photos, where the thin printed
+ * frame lines vanish): deskew by column sharpness, match the 12-column pattern (4 | 4 | 4) on the x profile,
+ * then the 30-row / 6-block pattern on the y profile inside that column range. Returns upright rectangles
+ * (rotated by the deskew angle); refineCorners() then fits the perspective.
+ */
+function profileCandidates(mask, w, h, maxOut = 12) {
+  const pts = collectPoints(mask, w, h, 60000);
+  if (pts.n < 500) return [];
+  const { xs, ys, n } = pts;
+  const D = Math.hypot(w, h);
+  const nb = Math.ceil(2 * D) + 2;
+  const off = Math.ceil(D) + 1;
+  // 1. deskew: angle with the sharpest x' histogram (bubble columns become narrow peaks)
+  let bestA = 0;
+  let bestE = -1;
+  const hist = new Float64Array(nb);
+  for (let a = -24; a <= 24; a += 1.5) {
+    const t = (a * Math.PI) / 180;
+    const c = Math.cos(t);
+    const sn = Math.sin(t);
+    hist.fill(0);
+    for (let i = 0; i < n; i++) hist[((xs[i] * c + ys[i] * sn) / 2 + off / 2) | 0]++;
+    let e = 0;
+    for (let i = 0; i < hist.length; i++) e += hist[i] * hist[i];
+    if (e > bestE) {
+      bestE = e;
+      bestA = t;
+    }
+  }
+  const c = Math.cos(bestA);
+  const sn = Math.sin(bestA);
+  const xr = new Float32Array(n);
+  const yr = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    xr[i] = xs[i] * c + ys[i] * sn;
+    yr[i] = -xs[i] * sn + ys[i] * c;
+  }
+  const prefix = (vals, mask2) => {
+    const hst = new Float64Array(nb);
+    for (let i = 0; i < n; i++) if (!mask2 || mask2(i)) hst[(vals[i] + off) | 0]++;
+    const pf = new Float64Array(nb + 1);
+    for (let i = 0; i < nb; i++) pf[i + 1] = pf[i] + hst[i];
+    return (a, b) => {
+      const lo = Math.max(0, Math.min(nb, Math.round(a + off)));
+      const hi = Math.max(0, Math.min(nb, Math.round(b + off)));
+      return hi > lo ? (pf[hi] - pf[lo]) / (hi - lo) : 0;
+    };
+  };
+  // 2. x profile: 12 choice columns vs the paper between them
+  const winX = prefix(xr);
+  // the bold question numbers left of column A look like a fifth column; model them, otherwise the pattern
+  // slides one column (numbers taken as A) or one group
+  const NUM_DU = 0.033;
+  const cols = P.colX.flat();
+  const peaksX = cols.concat(P.colX.map((g) => g[0] - NUM_DU));
+  const gapsX = [];
+  for (const g of P.colX) for (let k = 0; k + 1 < g.length; k++) gapsX.push((g[k] + g[k + 1]) / 2);
+  for (let k = 0; k + 1 < P.colX.length; k++) gapsX.push((P.colX[k][N_CH - 1] + P.colX[k + 1][0] - NUM_DU) / 2);
+  gapsX.push(0.965); // paper between the last D column and the right frame line
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (xr[i] < minX) minX = xr[i];
+    if (xr[i] > maxX) maxX = xr[i];
+  }
+  const xc = [];
+  for (let W = 0.18 * Math.min(w, h); W <= 1.05 * Math.max(w, h); W *= 1.015) {
+    const hw = Math.max(1, P.bubble.rx * W * 0.7);
+    const gw = Math.max(1, P.bubble.rx * W * 0.35);
+    const step = Math.max(1, W * 0.004);
+    for (let x0 = minX - 0.1 * W; x0 + 0.9 * W <= maxX; x0 += step) {
+      let pk = 0;
+      for (const u of peaksX) pk += winX(x0 + u * W - hw, x0 + u * W + hw);
+      let gp = 0;
+      for (const u of gapsX) gp += winX(x0 + u * W - gw, x0 + u * W + gw);
+      xc.push({ W, x0, s: pk / peaksX.length - gp / gapsX.length });
+    }
+  }
+  xc.sort((a, b) => b.s - a.s);
+  const xTop = [];
+  for (const e of xc) {
+    if (xTop.some((o) => Math.abs(o.x0 - e.x0) < 0.08 * o.W && Math.abs(o.W / e.W - 1) < 0.08)) continue;
+    xTop.push(e);
+    if (xTop.length >= 3) break;
+  }
+  // 3. y profile inside the column range: 30 rows vs the gaps between 5-question blocks
+  const rows = P.rowV;
+  const gapsY = [];
+  for (let r = P.blockSize; r < rows.length; r += P.blockSize) gapsY.push((rows[r - 1] + rows[r]) / 2);
+  const out = [];
+  for (const xe of xTop) {
+    const lo = xe.x0 + (cols[0] - 0.03) * xe.W;
+    const hi = xe.x0 + (cols[cols.length - 1] + 0.03) * xe.W;
+    const inside = (i) => xr[i] >= lo && xr[i] <= hi;
+    // rows get their own angle: a photo taken at a slant shears the sheet, so rows and columns are not
+    // perpendicular in the image
+    let bestB = bestA;
+    let bestEb = -1;
+    for (let db = -12; db <= 12; db += 1) {
+      const t = bestA + (db * Math.PI) / 180;
+      const cb = Math.cos(t);
+      const sb = Math.sin(t);
+      hist.fill(0);
+      for (let i = 0; i < n; i++) if (inside(i)) hist[((-xs[i] * sb + ys[i] * cb) / 2 + off / 2) | 0]++;
+      let e = 0;
+      for (let i = 0; i < hist.length; i++) e += hist[i] * hist[i];
+      if (e > bestEb) {
+        bestEb = e;
+        bestB = t;
+      }
+    }
+    // try the sheared row angle and plain perpendicular rows; the robust score picks
+    const angles = Math.abs(bestB - bestA) > 0.02 ? [bestA, bestB] : [bestA];
+    for (const angB of angles) {
+      const cb = Math.cos(angB);
+      const sb = Math.sin(angB);
+      for (let i = 0; i < n; i++) yr[i] = -xs[i] * sb + ys[i] * cb;
+      const winY = prefix(yr, inside);
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (let i = 0; i < n; i++) {
+        if (!inside(i)) continue;
+        if (yr[i] < minY) minY = yr[i];
+        if (yr[i] > maxY) maxY = yr[i];
+      }
+      const yc = [];
+      for (let f = 0.6; f <= 1.4; f *= 1.015) {
+        const Hh = P.aspect * xe.W * f;
+        const hw = Math.max(1, P.bubble.ry * Hh * 0.8);
+        const gw = Math.max(1, P.bubble.ry * Hh * 1.2);
+        for (let y0 = minY - 0.15 * Hh; y0 + 0.85 * Hh <= maxY + 0.15 * Hh; y0 += Math.max(1, Hh * 0.003)) {
+          let pk = 0;
+          for (const v of rows) pk += winY(y0 + v * Hh - hw, y0 + v * Hh + hw);
+          let gp = 0;
+          for (const v of gapsY) gp += winY(y0 + v * Hh - gw, y0 + v * Hh + gw);
+          yc.push({ Hh, y0, s: pk / rows.length - gp / gapsY.length });
+        }
+      }
+      yc.sort((a, b) => b.s - a.s);
+      const yTop = [];
+      for (const e of yc) {
+        if (yTop.some((o) => Math.abs(o.y0 - e.y0) < 0.05 * o.Hh && Math.abs(o.Hh / e.Hh - 1) < 0.05)) continue;
+        yTop.push(e);
+        if (yTop.length >= 2) break;
+      }
+      for (const ye of yTop) {
+        // solve x*c + y*sn = X and -x*sb + y*cb = Y
+        const det = c * cb + sn * sb;
+        const back = (X, Y) => ({ x: (X * cb - Y * sn) / det, y: (X * sb + Y * c) / det });
+        const { x0, W } = xe;
+        const { y0, Hh } = ye;
+        out.push({ corners: [back(x0, y0), back(x0 + W, y0), back(x0 + W, y0 + Hh), back(x0, y0 + Hh)], score: xe.s + ye.s, profile: true });
+      }
+    }
+  }
+  return out.slice(0, maxOut);
 }
 
 // ---------------------------------------------------------------- lattice
@@ -673,6 +929,185 @@ function coarseScore(rnB, w, h, Hu) {
   return sum / n;
 }
 
+// "Gap" points: places on the panel that are always paper (between 5-question blocks, between the three
+// question columns). Contrast = bubbles - gaps penalises a lattice that is too small/large or a row/column off.
+const GAPS = [];
+(function initGaps() {
+  const v = P.rowV;
+  const per = P.blockSize;
+  for (let col = 0; col < P.colX.length; col++) {
+    for (let r = per; r < v.length; r += per) {
+      const gv = (v[r - 1] + v[r]) / 2;
+      for (const u of P.colX[col]) GAPS.push({ u, v: gv });
+    }
+  }
+  for (let col = 0; col + 1 < P.colX.length; col++) {
+    const gu = (P.colX[col][N_CH - 1] + P.colX[col + 1][0]) / 2;
+    for (let r = 0; r < v.length; r += 2) GAPS.push({ u: gu, v: v[r] });
+  }
+  // Symmetry breakers (the lattice is periodic per 5-row block and nearly 180-degree symmetric):
+  // the paper strip above row 1, and the empty slots below question 80 in the third column.
+  const allU = P.colX.flat();
+  const topV = v[0] - 1.6 * (v[1] - v[0]);
+  for (const u of allU) GAPS.push({ u, v: topV });
+  const last = P.colX.length - 1;
+  const used = N_Q - last * P.perColumn; // rows used in the last column (80 - 60 = 20)
+  for (let r = used; r < v.length; r++) for (const u of P.colX[last]) GAPS.push({ u, v: v[r] });
+})();
+
+// Points on the four panel frame lines: the one feature that pins the lattice vertically (the paper strip
+// above row 1 looks exactly like a gap between 5-row blocks, so without it a one-block shift scores the same).
+const FRAME = [];
+for (let t = 0.02; t < 1; t += 0.04) FRAME.push({ u: t, v: 0 }, { u: t, v: 1 }, { u: 0, v: t }, { u: 1, v: t });
+const FRAME_W = 0.3;
+
+/** Mean of `map` at the projected points that fall inside the image -> { mean, frac }. */
+function sampleMean(map, w, h, Hu, pts) {
+  let s = 0;
+  let n = 0;
+  for (const q of pts) {
+    const p = applyHomography(Hu, q.u, q.v);
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    if (x >= 0 && y >= 0 && x < w && y < h) {
+      s += map[y * w + x];
+      n++;
+    }
+  }
+  return { mean: n ? s / n : 0, frac: n / pts.length };
+}
+
+/**
+ * bubbles + frame - gaps. Points outside the photo are unknown, not empty (cropped photos), but the
+ * lattice must stay mostly inside the image.
+ */
+function latticeContrast(map, w, h, Hu) {
+  const b = sampleMean(map, w, h, Hu, BUBBLES);
+  const f = sampleMean(map, w, h, Hu, FRAME);
+  const g = sampleMean(map, w, h, Hu, GAPS);
+  return (b.mean + FRAME_W * f.mean - g.mean) * Math.min(1, b.frac / 0.75);
+}
+
+/**
+ * Coarse-to-fine hill climb of the 4 frame corners on increasingly sharp blur maps, maximising the lattice
+ * contrast. Heavy blur first so the climb is not trapped one row/choice off; fixes perspective and the
+ * guessed side of 3-line candidates.
+ */
+function refineCorners(prep, corners, fineOnly) {
+  const { w, h } = prep.maps;
+  const diag = Math.hypot(w, h);
+  let c = corners.map((p) => ({ x: p.x, y: p.y }));
+  const levels = [
+    [prep.rnD, 0.02],
+    [prep.rnC, 0.01],
+    [prep.rnB, 0.005],
+    [prep.maps.rnM, 0.0025],
+  ].slice(fineOnly ? 2 : 0);
+  const moves = [];
+  for (let i = 0; i < 4; i++) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) moves.push({ i, dx, dy });
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) moves.push({ i: -1, dx, dy }); // translate all
+  moves.push({ s: 1 }, { s: -1 }); // scale about the centre
+  let best = -Infinity;
+  for (const [map, frac] of levels) {
+    const step = Math.max(1, frac * diag);
+    let H = computeHomography(UNIT, c);
+    if (!H) return null;
+    best = latticeContrast(map, w, h, H);
+    for (let it = 0; it < 40; it++) {
+      let improved = false;
+      for (const mv of moves) {
+        let t;
+        if (mv.s) {
+          const cx = (c[0].x + c[1].x + c[2].x + c[3].x) / 4;
+          const cy = (c[0].y + c[1].y + c[2].y + c[3].y) / 4;
+          const k = 1 + (mv.s * step) / Math.max(1, dist(c[0], c[2]));
+          t = c.map((p) => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k }));
+        } else {
+          t = c.map((p, j) => (mv.i < 0 || mv.i === j ? { x: p.x + mv.dx * step, y: p.y + mv.dy * step } : p));
+        }
+        const H2 = computeHomography(UNIT, t);
+        if (!H2) continue;
+        const sc = latticeContrast(map, w, h, H2);
+        if (sc > best + 1e-6) {
+          best = sc;
+          c = t;
+          improved = true;
+        }
+      }
+      if (!improved) break;
+    }
+  }
+  return { corners: c, contrast: best };
+}
+
+const BLOCK_DV = P.rowV[P.blockSize] - P.rowV[0];
+const GROUP_DU = P.colX[1][0] - P.colX[0][0];
+
+/**
+ * Robust fine-scale lattice score: median per-bubble blob response (centre + half-size ellipse) minus the
+ * median at the gap points. Medians ignore filled bubbles and red clutter (packaging, pens) that a mean
+ * rewards. Shifts: optional per-bubble pixel offsets from fitLattice.
+ */
+function robustScore(map, w, h, Hu, shiftX, shiftY) {
+  const { rx, ry } = P.bubble;
+  const vals = [];
+  for (let i = 0; i < BUBBLES.length; i++) {
+    const b = BUBBLES[i];
+    let s = 0;
+    let n = 0;
+    for (let k = -1; k < COARSE_PHI.length; k++) {
+      const du = k < 0 ? 0 : 0.5 * rx * Math.cos(COARSE_PHI[k]);
+      const dv = k < 0 ? 0 : 0.5 * ry * Math.sin(COARSE_PHI[k]);
+      const p = applyHomography(Hu, b.u + du, b.v + dv);
+      const x = Math.round(p.x + (shiftX ? shiftX[i] : 0));
+      const y = Math.round(p.y + (shiftY ? shiftY[i] : 0));
+      if (x >= 0 && y >= 0 && x < w && y < h) {
+        s += map[y * w + x];
+        n++;
+      }
+    }
+    if (n >= 5) vals.push(s / n);
+  }
+  if (vals.length < 0.6 * BUBBLES.length) return -Infinity;
+  const gv = [];
+  for (const q of GAPS) {
+    const p = applyHomography(Hu, q.u, q.v);
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    if (x >= 0 && y >= 0 && x < w && y < h) gv.push(map[y * w + x]);
+  }
+  return median(vals) - median(gv);
+}
+
+/** Same lattice moved by k 5-row blocks (v), j question columns (u) and/or turned 180 degrees. */
+function variantCorners(Hu, k, rot, j = 0) {
+  const c = UNIT.map((p) => applyHomography(Hu, p.x + j * GROUP_DU, p.y + k * BLOCK_DV));
+  return rotateCorners(c, rot);
+}
+
+/**
+ * Plausible panel geometry: big enough, roughly the panel's aspect, convex. A climb can collapse a lattice
+ * onto one red blob (pen, logo), where every bubble samples red and the median score is huge.
+ */
+function saneQuad(c, w, h) {
+  const fw = (dist(c[0], c[1]) + dist(c[3], c[2])) / 2;
+  const fh = (dist(c[0], c[3]) + dist(c[1], c[2])) / 2;
+  if (!(fw >= MIN_FRAME_FRAC * Math.max(w, h))) return false;
+  const ar = fh / fw / P.aspect;
+  if (ar < 0.6 || ar > 1.6) return false;
+  let sign = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = c[i];
+    const b = c[(i + 1) % 4];
+    const d = c[(i + 2) % 4];
+    const cr = (b.x - a.x) * (d.y - b.y) - (b.y - a.y) * (d.x - b.x);
+    const sg = Math.sign(cr);
+    if (sg === 0 || (sign && sg !== sign)) return false;
+    sign = sg;
+  }
+  return true;
+}
+
 /** Best (quad, orientation) by lattice quality; coarse screening first, then full snapping fit. */
 function selectFrame(maps, rnS, rnB, T, quads, opts) {
   const { w, h } = maps;
@@ -687,14 +1122,71 @@ function selectFrame(maps, rnS, rnB, T, quads, opts) {
   }
   screened.sort((a, b) => b.coarse - a.coarse);
   if (opts && opts.debug) opts.debug.coarse = screened.slice(0, 8).map((e) => ({ c: e.coarse, rot: e.rot, corners: e.corners }));
-  const top = screened.slice(0, (opts && opts.fullFits) || 3);
+  // refine the most promising candidates (distinct quads), then keep the best few by fine contrast
+  const refined = [];
+  const toRefine = screened.slice(0, (opts && opts.refine) || 8);
+  for (const e of screened) if (e.quad.profile && !toRefine.includes(e)) toRefine.push(e);
+  for (const e of toRefine) {
+    let start = e.corners;
+    if (e.quad.profile) {
+      // profile rectangles have the row period right but may sit whole blocks off (other red grids on the
+      // sheet look like rows): pick the block shift on a medium blur before climbing
+      let bs = -Infinity;
+      for (let k = -4; k <= 4; k++) {
+        const cs = variantCorners(e.Hu, k, false, 0);
+        const Hv = computeHomography(UNIT, cs);
+        const sc = Hv ? robustScore(rnB, w, h, Hv) : -Infinity;
+        if (sc > bs) {
+          bs = sc;
+          start = cs;
+        }
+      }
+    }
+    const r = refineCorners(opts.prep, start);
+    if (!r) continue;
+    const Hu = computeHomography(UNIT, r.corners);
+    if (!Hu) continue;
+    refined.push({ ...e, corners: r.corners, Hu, contrast: r.contrast });
+  }
+  refined.sort((a, b) => b.contrast - a.contrast);
+  // The lattice is periodic per block and nearly 180-degree symmetric: test the shifted / turned variants
+  // of the best refinements on the fine map with the robust (median) score, then polish the winner.
+  const rnM = maps.rnM;
+  const finals = [];
+  for (const e of refined.slice(0, (opts && opts.variants) || 10)) {
+    let bestV = null;
+    for (const rot of [false, true]) {
+      for (let k = -2; k <= 2; k++) {
+        for (let j = -1; j <= 1; j++) {
+          const cs = variantCorners(e.Hu, k, rot, j);
+          const Hv = computeHomography(UNIT, cs);
+          if (!Hv) continue;
+          const sc = robustScore(rnM, w, h, Hv);
+          if (!bestV || sc > bestV.sc) bestV = { cs, sc, k: k + "/" + j, rot };
+        }
+      }
+    }
+    if (!bestV || !Number.isFinite(bestV.sc)) continue;
+    const r = refineCorners(opts.prep, bestV.cs, true);
+    const cs = r ? r.corners : bestV.cs;
+    const Hu = computeHomography(UNIT, cs);
+    if (!Hu || !saneQuad(cs, w, h)) continue;
+    finals.push({ ...e, corners: cs, Hu, rot: e.rot !== bestV.rot, robust: robustScore(rnM, w, h, Hu), variant: bestV.k });
+  }
+  finals.sort((a, b) => b.robust - a.robust);
+  if (opts && opts.debug) {
+    opts.debug.refined = refined.map((e) => ({ contrast: e.contrast, rot: e.rot, corners: e.corners }));
+    opts.debug.finals = finals.map((e) => ({ robust: e.robust, variant: e.variant, rot: e.rot, corners: e.corners }));
+  }
+  const top = finals.slice(0, (opts && opts.fullFits) || 3);
   let best = null;
   const evals = [];
   for (const e of top) {
-    const frameW = (dist(e.quad.corners[0], e.quad.corners[1]) + dist(e.quad.corners[3], e.quad.corners[2])) / 2;
+    const frameW = (dist(e.corners[0], e.corners[1]) + dist(e.corners[3], e.corners[2])) / 2;
     e.fit = fitLattice(maps, rnS, e.Hu, T, frameW, opts);
     e.frameW = frameW;
-    e.score = e.fit.blob !== undefined ? e.fit.blob : e.fit.quality;
+    e.fit.robust = robustScore(rnM, w, h, e.Hu, e.fit.shiftX, e.fit.shiftY);
+    e.score = e.fit.robust;
     evals.push(e);
     if (!best || e.score > best.score) best = e;
   }
@@ -709,20 +1201,47 @@ function prepare(img, maxSide) {
   const scaled = downscale(img, maxSide);
   const maps = buildMaps(scaled);
   const { p99, T } = inkThreshold(maps.rn);
+  // Line mask: red AND clearly redder than its neighbourhood. Large reddish areas (a laptop or desk under warm
+  // light) are flat, so they drop out; thin printed lines and ellipse outlines stay.
+  const local = boxBlur(maps.rn, maps.w, maps.h, Math.max(3, Math.round(Math.max(maps.w, maps.h) / 200)));
+  const ridge = Math.max(6, Math.round(0.4 * T));
   const mask = new Uint8Array(maps.rn.length);
-  for (let i = 0; i < mask.length; i++) mask[i] = maps.rn[i] > T ? 1 : 0;
+  // thin-structure redness (rn minus local mean): bubble outlines and letters stay, solid red objects
+  // (a red pen next to the sheet) keep only their edges, so they cannot outscore the printed lattice
+  const thin = new Uint8Array(maps.rn.length);
+  for (let i = 0; i < mask.length; i++) {
+    const d = maps.rn[i] - local[i];
+    thin[i] = d > 0 ? d : 0;
+    mask[i] = maps.rn[i] > T && d > ridge ? 1 : 0;
+  }
   const rnS = blur3(maps.rn, maps.w, maps.h);
-  maps.rnM = boxBlur(maps.rn, maps.w, maps.h, Math.max(2, Math.round(Math.max(maps.w, maps.h) / 530)));
-  const rnB = boxBlur(maps.rn, maps.w, maps.h, Math.max(3, Math.round(Math.max(maps.w, maps.h) / 260)));
-  return { scaled, maps, p99, T, mask, rnS, rnB, sx: img.width / scaled.width, sy: img.height / scaled.height };
+  const big = Math.max(maps.w, maps.h);
+  maps.rnM = boxBlur(thin, maps.w, maps.h, Math.max(2, Math.round(big / 530)));
+  const rnB = boxBlur(thin, maps.w, maps.h, Math.max(3, Math.round(big / 260)));
+  const rnC = boxBlur(thin, maps.w, maps.h, Math.max(5, Math.round(big / 110)));
+  const rnD = boxBlur(thin, maps.w, maps.h, Math.max(9, Math.round(big / 55)));
+  return { scaled, maps, p99, T, mask, rnS, rnB, rnC, rnD, sx: img.width / scaled.width, sy: img.height / scaled.height };
 }
 
-// Acceptance on the blob response after snapping (real photo: right panel ~1.8 T, best wrong quad ~1.07 T,
-// 180 degrees ~1.0 T). Outline quality/good are kept for diagnostics only.
-const MIN_BLOB_FRAC = 1.4;
+// Acceptance (6 real phone photos: right panel robust 15-17, best wrong block/rotation 11-12; non-forms and
+// half-photographed sheets collapse to a tiny or off-image lattice):
+const MIN_ROBUST = 10; // median bubble minus median gap on the thin-redness map
+const MIN_FRAME_FRAC = 0.15; // panel width vs the longer image side
+const MIN_INSIDE = 0.9; // share of bubble centres inside the image
 
-function acceptFrame(sel, T) {
-  return !!sel && sel.fit.blob >= MIN_BLOB_FRAC * T;
+/** Share of printed bubble centres that fall inside the image (photo cropped through the panel -> low). */
+function insideFrac(Hu, w, h) {
+  let k = 0;
+  for (const b of BUBBLES) {
+    const p = applyHomography(Hu, b.u, b.v);
+    if (p.x >= 0 && p.y >= 0 && p.x <= w - 1 && p.y <= h - 1) k++;
+  }
+  return k / BUBBLES.length;
+}
+
+function acceptFrame(sel, w, h) {
+  if (!sel || !(sel.fit.robust >= MIN_ROBUST) || !saneQuad(sel.corners, w, h)) return false;
+  return insideFrac(sel.Hu, w, h) >= MIN_INSIDE;
 }
 
 function toOriginalPt(p, sx, sy) {
@@ -738,9 +1257,10 @@ export function detectRedForm(img, opts) {
     const prep = prepare(img, (opts && opts.red && opts.red.detectMaxSide) || DEFAULTS.red.detectMaxSide);
     if (prep.p99 < 24) return { found: false, corners: null, error: "NO_FRAME" };
     const { quads } = frameCandidates(prep.mask, prep.maps.w, prep.maps.h, { maxQuads: DEFAULTS.red.maxQuads });
+    quads.push(...profileCandidates(prep.mask, prep.maps.w, prep.maps.h));
     if (quads.length === 0) return { found: false, corners: null, error: "NO_FRAME" };
-    const sel = selectFrame(prep.maps, prep.rnS, prep.rnB, prep.T, quads, { searchFrac: 0.03, fullFits: 2 });
-    if (!acceptFrame(sel, prep.T)) return { found: false, corners: null, error: "NO_FRAME" };
+    const sel = selectFrame(prep.maps, prep.rnS, prep.rnB, prep.T, quads, { searchFrac: 0.03, fullFits: 2, refine: 6, prep });
+    if (!acceptFrame(sel, prep.maps.w, prep.maps.h)) return { found: false, corners: null, error: "NO_FRAME" };
     const corners = sel.corners.map((p) => toOriginalPt(p, prep.sx, prep.sy));
     return { found: true, corners, error: null };
   } catch (e) {
@@ -826,7 +1346,11 @@ export function scanRedForm(img, layout, opts) {
   const t0 = now();
   try {
     const o = { ...DEFAULTS, ...(opts || {}) };
-    o.thresholds = { ...DEFAULTS.thresholds, ...DEFAULTS.red.thresholds, ...((opts && opts.thresholds) || {}) };
+    // settings store the whole threshold set once any value is edited; only values the teacher actually
+    // changed from the (black sheet) defaults override the red-sheet ones
+    const user = {};
+    for (const [k, v] of Object.entries((opts && opts.thresholds) || {})) if (v !== DEFAULTS.thresholds[k]) user[k] = v;
+    o.thresholds = { ...DEFAULTS.thresholds, ...DEFAULTS.red.thresholds, ...user };
     const n = layout && layout.config ? layout.config.numQuestions : 0;
     if (!layout || layout.format !== "spm-kom28" || !Number.isInteger(n) || n < 1 || n > N_Q) {
       return emptyResult("LAYOUT_INVALID", t0);
@@ -848,8 +1372,9 @@ export function scanRedForm(img, layout, opts) {
       opts.debug.size = [maps.w, maps.h];
     }
     const { quads } = frameCandidates(mask, maps.w, maps.h, { maxQuads: red.maxQuads, debug: opts && opts.debug });
+    quads.push(...profileCandidates(mask, maps.w, maps.h));
     if (quads.length === 0) return emptyResult("NO_FRAME", t0);
-    const sel = selectFrame(maps, rnS, rnB, T, quads, { debug: opts && opts.debug });
+    const sel = selectFrame(maps, rnS, rnB, T, quads, { debug: opts && opts.debug, prep });
     if (opts && opts.debug) {
       opts.debug.quads = quads.map((q) => ({ corners: q.corners, score: q.score, cov: q.cov }));
       opts.debug.sel = sel && {
@@ -857,13 +1382,15 @@ export function scanRedForm(img, layout, opts) {
         corners: sel.corners,
         quality: sel.fit.quality,
         blob: sel.fit.blob,
+        robust: sel.fit.robust,
+        inside: insideFrac(sel.Hu, maps.w, maps.h),
         good: sel.fit.good,
         ratio: sel.ratio,
         T,
         p99: prep.p99,
       };
     }
-    if (!acceptFrame(sel, T)) return emptyResult("NO_FRAME", t0);
+    if (!acceptFrame(sel, maps.w, maps.h)) return emptyResult("NO_FRAME", t0);
 
     // ---- global homography refined from the snapped bubble centres
     const { fit } = sel;
@@ -911,6 +1438,8 @@ export function scanRedForm(img, layout, opts) {
         rxPx.push(axp);
         ryPx.push(ayp);
         const s = sampleEllipse(maps.rp, wdt, hgt, cx, cy, axp, ayp, o);
+        // the paper ring reaches 1.6 half-axes; any of it off the photo (cropped sheet) -> unreadable
+        s.off = cx - 1.6 * axp < 0 || cy - 1.6 * ayp < 0 || cx + 1.6 * axp > wdt - 1 || cy + 1.6 * ayp > hgt - 1;
         whites.push(s.white);
         fills.push(s);
         pos.push({ x: cx, y: cy });
@@ -927,6 +1456,10 @@ export function scanRedForm(img, layout, opts) {
     }
     for (let q = 1; q <= n; q++) {
       const fills = fillsAll[q - 1].map((s) => fillFrom(s.vals, s.white, red.blackFrac));
+      if (fillsAll[q - 1].some((s) => s.off)) {
+        answers.push({ q, choice: null, status: "UNCERTAIN", selected: [], fills, offImage: true });
+        continue;
+      }
       const d = decideRow(fills, labels, o.thresholds);
       answers.push({ q, choice: d.choice, status: d.status, selected: d.selected, fills });
     }
@@ -963,4 +1496,4 @@ export function scanRedForm(img, layout, opts) {
 }
 
 // Internals exposed for tests/diagnostics only.
-export const _internals = { blockScore, outlineScore, projectBubbles, coarseScore, UNIT, boxBlur, buildMaps, blur3, inkThreshold, collectPoints, houghLines, runScore, frameCandidates, fitLattice, selectFrame, prepare, BUBBLES, BLOCKS };
+export const _internals = { robustScore, variantCorners, profileCandidates, refineCorners, latticeContrast, blockScore, outlineScore, projectBubbles, coarseScore, UNIT, boxBlur, buildMaps, blur3, inkThreshold, collectPoints, houghLines, runScore, frameCandidates, fitLattice, selectFrame, prepare, BUBBLES, BLOCKS };
